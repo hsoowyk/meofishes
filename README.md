@@ -29,6 +29,23 @@ go build -o meofishes ./cmd/meofishes   # a 1ª vez demora (compila os bindings 
 ./meofishes
 ```
 
+### Build mais rápido: Qt como biblioteca dinâmica
+
+O `go build` compila os ~337 arquivos C++ do miqt praticamente um por vez.
+O `tools/qtlib/qtlib.sh` compila esses arquivos **uma vez, usando todos os
+núcleos**, numa biblioteca `libmiqt-qt5.so`, e faz o `go.mod` usar uma cópia
+do miqt que só linka contra ela:
+
+```sh
+tools/qtlib/qtlib.sh enable      # compila a .so (JOBS=16 OPT=-O1) e ativa
+CGO_CXXFLAGS="-O1 -w" go build -ldflags="-s -w" -o meofishes ./cmd/meofishes
+tools/qtlib/qtlib.sh status      # o que está ativo
+tools/qtlib/qtlib.sh disable     # volta ao build normal
+```
+
+O binário passa a precisar da `libmiqt-qt5.so` ao rodar (procura no caminho
+de onde foi compilado). Para distribuir, use o build normal.
+
 Ferramentas de linha de comando:
 
 ```sh
