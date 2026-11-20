@@ -140,7 +140,6 @@ func (u *UI) animateIn(w *qt.QWidget, mode string, dur, delay time.Duration, eas
 	w.SetGraphicsEffect(eff.QGraphicsEffect)
 	pos := w.Pos()
 	x0, y0 := pos.X(), pos.Y()
-	pos.Delete()
 	dx, dy := 0.0, 0.0
 	switch mode {
 	case "slide-up":

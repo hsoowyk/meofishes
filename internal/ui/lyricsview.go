@@ -22,12 +22,12 @@ type LyricsView struct {
 	OnSeek func(ms int64)
 
 	// layout cache
-	lay      []layLine
-	layW     int
-	layKey   string
-	totalH   float64
-	fonts    *lyrFonts
-	st       lyrStyle
+	lay    []layLine
+	layW   int
+	layKey string
+	totalH float64
+	fonts  *lyrFonts
+	st     lyrStyle
 	// scrolling
 	scroll     float64
 	scrollFrom float64
@@ -50,24 +50,24 @@ type layWord struct {
 }
 
 type layLine struct {
-	idx      int
-	y, h     float64 // top inside the document, height
-	words    []layWord
-	rows     int
-	rowW     []float64
-	bg       []layWord
-	bgRows   int
-	bgRowW   []float64
-	align    string
-	timed    bool // has word timing
+	idx       int
+	y, h      float64 // top inside the document, height
+	words     []layWord
+	rows      int
+	rowW      []float64
+	bg        []layWord
+	bgRows    int
+	bgRowW    []float64
+	align     string
+	timed     bool // has word timing
 	interlude bool // a gap marker before this line
 }
 
 type lyrFonts struct {
-	main, bg       *qt.QFont
-	mainFM, bgFM   *qt.QFontMetricsF
-	rowH, bgRowH   float64
-	ascent, bgAsc  float64
+	main, bg      *qt.QFont
+	mainFM, bgFM  *qt.QFontMetricsF
+	rowH, bgRowH  float64
+	ascent, bgAsc float64
 }
 
 func (f *lyrFonts) delete() {
@@ -81,14 +81,14 @@ func (f *lyrFonts) delete() {
 }
 
 type lyrStyle struct {
-	color, past, active, upcoming, glow, bgVocal, dot, credit, hoverC, empty theme.Color
+	color, past, active, upcoming, glow, bgVocal, dot, credit, hoverC, empty          theme.Color
 	glowR, lift, soft, activeScale, inactiveScale, focus, fade, pad, spacing, bgScale float64
-	align, oppAlign, fill, scrollEase                                               string
-	scrollDur, scaleDur                                                             int
-	dots, lineFill                                                                  bool
-	family                                                                          string
-	size                                                                            float64
-	weight                                                                          int
+	align, oppAlign, fill, scrollEase                                                 string
+	scrollDur, scaleDur                                                               int
+	dots, lineFill                                                                    bool
+	family                                                                            string
+	size                                                                              float64
+	weight                                                                            int
 }
 
 func (u *UI) lyricsView(name string) *LyricsView {
@@ -101,7 +101,6 @@ func (u *UI) lyricsView(name string) *LyricsView {
 	v.OnWheelEvent(func(super func(*qt.QWheelEvent), e *qt.QWheelEvent) {
 		d := e.AngleDelta()
 		v.scroll -= float64(d.Y()) * 0.6
-		d.Delete()
 		v.scroll = clamp(v.scroll, -float64(v.Height())/2, math.Max(0, v.totalH-float64(v.Height())/2))
 		v.scrollTo = v.scroll
 		v.manualTill = time.Now().Add(3 * time.Second)
@@ -135,7 +134,7 @@ func (v *LyricsView) SetLyrics(l *core.Lyrics, msg string) {
 	v.lyr, v.msg = l, msg
 	v.layKey = ""
 	v.active = -1
-	v.scroll, v.scrollTo = -float64(v.Height()) * 0.2, 0
+	v.scroll, v.scrollTo = -float64(v.Height())*0.2, 0
 	v.manualTill = time.Time{}
 	v.Update()
 }

@@ -103,7 +103,6 @@ func (u *UI) fillSources(cb *qt.QComboBox, withAll bool) {
 	if cb.Count() > 0 {
 		v := cb.CurrentData()
 		prev = v.ToString()
-		v.Delete()
 	}
 	if prev == "" {
 		prev = u.app.cfg.Source
@@ -127,9 +126,7 @@ func (u *UI) fillSources(cb *qt.QComboBox, withAll bool) {
 }
 
 func comboValue(cb *qt.QComboBox) string {
-	v := cb.CurrentData()
-	defer v.Delete()
-	return v.ToString()
+	return cb.CurrentData().ToString()
 }
 
 // ---------------------------------------------------------------- home

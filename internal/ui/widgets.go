@@ -169,7 +169,7 @@ type Slider struct {
 	value    float64 // shown value (eased)
 	target   float64
 	dragging bool
-	hover    float64 // 0..1 hover animation
+	hover    float64         // 0..1 hover animation
 	OnSeek   func(v float64) // released
 	OnDrag   func(v float64) // while dragging
 }
@@ -211,7 +211,6 @@ func (u *UI) slider(name string) *Slider {
 	s.OnWheelEvent(func(super func(*qt.QWheelEvent), e *qt.QWheelEvent) {
 		d := e.AngleDelta()
 		step := float64(d.Y()) / 120 * 0.05
-		d.Delete()
 		v := clamp(s.target+step, 0, 1)
 		s.SetValue(v)
 		if s.OnSeek != nil {
@@ -309,11 +308,11 @@ func (s *Slider) paint() {
 // with a soft breathing light. Props on #Root: -meo-backdrop-*.
 type Backdrop struct {
 	*qt.QWidget
-	u        *UI
-	tint     theme.Color // current dynamic color
-	hasTint  bool
-	pulseT0  time.Time
-	pulseOn  bool
+	u       *UI
+	tint    theme.Color // current dynamic color
+	hasTint bool
+	pulseT0 time.Time
+	pulseOn bool
 }
 
 func (u *UI) backdrop() *Backdrop {

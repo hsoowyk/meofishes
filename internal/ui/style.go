@@ -49,7 +49,6 @@ func Selectors(w *qt.QWidget, kind string) []string {
 	role := ""
 	if v := w.Property("role"); v != nil {
 		role = v.ToString()
-		v.Delete()
 	}
 	if name != "" {
 		out = append(out, kind+"#"+name, "#"+name)

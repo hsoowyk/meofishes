@@ -1,0 +1,49 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # "docker" is the default label of Forgejo runners. If your runner uses
+    # another label (see Site/Repo settings → Actions → Runners), change it here.
+    runs-on: docker
+    container:
+      image: golang:1.26-bookworm
+    env:
+      CGO_CXXFLAGS: "-O1 -w"
+      GOFLAGS: "-buildvcs=false"
+    steps:
+      - name: Install system packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs qtbase5-dev build-essential pkg-config git
+          pkg-config --modversion Qt5Widgets
+
+      - uses: actions/checkout@v4
+
+      - name: Cache Go build (Qt bindings take a while the first time)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.cache/go-build
+            /go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - name: Test (core packages, no network)
+        run: go test ./internal/core/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/...
+
+      - name: Build
+        run: go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
+
+      - name: Check CLI
+        run: ./meofishes modules
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: meofishes-linux-amd64
+          path: meofishes

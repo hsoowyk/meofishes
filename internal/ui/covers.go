@@ -90,7 +90,6 @@ func (l *CoverLoader) Get(url string, f func(*qt.QPixmap)) {
 					small := px.Scaled3(640, 640, qt.KeepAspectRatio, qt.SmoothTransformation)
 					px.Delete()
 					px = qt.NewQPixmap5(small)
-					small.Delete()
 				}
 			}
 			if px != nil {
@@ -154,14 +153,11 @@ func dominantColor(px *qt.QPixmap) (theme.Color, bool) {
 	}
 	small := px.Scaled3(24, 24, qt.IgnoreAspectRatio, qt.SmoothTransformation)
 	img := small.ToImage()
-	defer small.Delete()
-	defer img.Delete()
 	var r, g, b, wsum float64
 	for y := 0; y < img.Height(); y++ {
 		for x := 0; x < img.Width(); x++ {
 			c := img.PixelColor(x, y)
 			col := fromQ(c)
-			c.Delete()
 			_, s, li := col.HSL()
 			w := 0.15 + s*s*(1-abs(li-0.5)*1.6) // prefer saturated mid-tones
 			r += col.R * w

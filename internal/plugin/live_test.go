@@ -63,5 +63,8 @@ func TestLiveRuntimes(t *testing.T) {
 	}
 }
 
-func lyricsQ() lyricsQuery { return lyricsQuery{Title: "Blinding Lights", Artist: "The Weeknd", DurationMs: 200000} }
+func lyricsQ() lyricsQuery {
+	return lyricsQuery{Title: "Blinding Lights", Artist: "The Weeknd", DurationMs: 200000}
+}
+
 type lyricsQuery = lyrics.Query

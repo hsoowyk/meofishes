@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -25,6 +26,10 @@ import (
 	"meofishes/internal/theme"
 	"meofishes/internal/ui"
 )
+
+// Qt must run on the process' main OS thread. Lock it before anything else
+// runs, so the Go scheduler never moves the main goroutine elsewhere.
+func init() { runtime.LockOSThread() }
 
 func main() {
 	if len(os.Args) > 1 {
@@ -40,7 +45,7 @@ func manager() (*plugin.Manager, *config.Config) {
 	cfg := config.Load(paths)
 	host := &plugin.Host{Version: config.Version, UserAgent: cfg.UserAgent(), DataDir: paths.PData,
 		Client: &http.Client{Timeout: 25 * time.Second},
-		Logf: func(id, f string, a ...any) { fmt.Fprintf(os.Stderr, "[%s] %s\n", id, fmt.Sprintf(f, a...)) }}
+		Logf:   func(id, f string, a ...any) { fmt.Fprintf(os.Stderr, "[%s] %s\n", id, fmt.Sprintf(f, a...)) }}
 	m := plugin.NewManager(host, paths.Plugins, &cfg.Plugins)
 	m.Register(plugin.Builtin{Manifest: meolyrics.Manifest, New: meolyrics.New})
 	m.Register(plugin.Builtin{Manifest: localfiles.Manifest, New: localfiles.New})

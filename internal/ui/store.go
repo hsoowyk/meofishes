@@ -30,7 +30,6 @@ var runtimeNames = map[string]string{"declarative": "declarativo", "script": "sc
 func (u *UI) openFolder(dir string) {
 	url := qt.QUrl_FromLocalFile(dir)
 	qt.QDesktopServices_OpenUrl(url)
-	url.Delete()
 }
 
 func (u *UI) confirm(title, text string) bool {
