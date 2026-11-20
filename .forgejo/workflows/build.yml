@@ -6,10 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The runner of git.5418.org is arm64 (labels: docker, ubuntu-latest).
+# - "native" builds for the runner's own architecture (arm64): tests + build.
+# - "amd64" cross-compiles for x86_64 PCs using Debian multiarch Qt packages.
+
 jobs:
-  build:
-    # "docker" is the default label of Forgejo runners. If your runner uses
-    # another label (see Site/Repo settings → Actions → Runners), change it here.
+  native:
     runs-on: docker
     container:
       image: golang:1.26-bookworm
@@ -25,14 +27,14 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Cache Go build (Qt bindings take a while the first time)
+      - name: Cache Go build
         uses: actions/cache@v4
         with:
           path: |
             /root/.cache/go-build
             /go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
-          restore-keys: go-${{ runner.os }}-
+          key: go-native-${{ hashFiles('go.sum') }}
+          restore-keys: go-native-
 
       - name: Test (core packages, no network)
         run: go test ./internal/core/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/...
@@ -42,6 +44,53 @@ jobs:
 
       - name: Check CLI
         run: ./meofishes modules
+
+      - name: Name artifact after the architecture
+        run: echo "ARCH=$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: meofishes-linux-${{ env.ARCH }}
+          path: meofishes
+
+  amd64:
+    runs-on: docker
+    continue-on-error: true
+    container:
+      image: golang:1.26-bookworm
+    env:
+      CGO_ENABLED: "1"
+      GOOS: linux
+      GOARCH: amd64
+      CC: x86_64-linux-gnu-gcc
+      CXX: x86_64-linux-gnu-g++
+      PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
+      PKG_CONFIG_LIBDIR: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+      CGO_CXXFLAGS: "-O1 -w"
+      GOFLAGS: "-buildvcs=false"
+    steps:
+      - name: Install cross toolchain and amd64 Qt
+        run: |
+          dpkg --add-architecture amd64
+          apt-get update
+          apt-get install -y --no-install-recommends nodejs git pkg-config \
+            gcc-x86-64-linux-gnu g++-x86-64-linux-gnu libc6-dev-amd64-cross \
+            qtbase5-dev:amd64
+          pkg-config --modversion Qt5Widgets
+
+      - uses: actions/checkout@v4
+
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.cache/go-build
+            /go/pkg/mod
+          key: go-amd64-${{ hashFiles('go.sum') }}
+          restore-keys: go-amd64-
+
+      - name: Build
+        run: go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
 
       - uses: actions/upload-artifact@v3
         with:
