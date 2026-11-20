@@ -50,9 +50,16 @@ jobs:
           CC: x86_64-linux-gnu-gcc
           CXX: x86_64-linux-gnu-g++
           PKG_CONFIG_LIBDIR: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+          # miqt/qt is a huge package: keep the Go compiler's memory low so the
+          # runner does not OOM-kill it ("compile: signal: killed")
+          GOGC: "25"
         run: |
           pkg-config --modversion Qt5Widgets
-          go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
+          free -h || true
+          go build -p 1 -ldflags="-s -w" \
+            -gcflags='github.com/mappu/miqt/...=-c=1' -gcflags='meofishes/...=-e' \
+            -o meofishes ./cmd/meofishes
+          ls -lh meofishes
           file meofishes || true
 
       - uses: actions/upload-artifact@v3
