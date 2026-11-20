@@ -6,66 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
 
-# The runner of git.5418.org is arm64 (labels: docker, ubuntu-latest).
-# - "native" builds for the runner's own architecture (arm64): tests + build.
-# - "amd64" cross-compiles for x86_64 PCs using Debian multiarch Qt packages.
+# Builds the x86_64 (amd64) Linux binary.
+# The git.5418.org runner is arm64, so this cross-compiles: Debian multiarch
+# provides the amd64 Qt packages and the x86_64-linux-gnu-g++ compiler.
 
 jobs:
-  native:
+  linux-amd64:
     runs-on: docker
     container:
       image: golang:1.26-bookworm
     env:
-      CGO_CXXFLAGS: "-O1 -w"
-      GOFLAGS: "-buildvcs=false"
-    steps:
-      - name: Install system packages
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends nodejs qtbase5-dev build-essential pkg-config git
-          pkg-config --modversion Qt5Widgets
-
-      - uses: actions/checkout@v4
-
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: |
-            /root/.cache/go-build
-            /go/pkg/mod
-          key: go-native-${{ hashFiles('go.sum') }}
-          restore-keys: go-native-
-
-      - name: Test (core packages, no network)
-        run: go test ./internal/core/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/...
-
-      - name: Build
-        run: go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
-
-      - name: Check CLI
-        run: ./meofishes modules
-
-      - name: Name artifact after the architecture
-        run: echo "ARCH=$(go env GOARCH)" >> "$GITHUB_ENV"
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: meofishes-linux-${{ env.ARCH }}
-          path: meofishes
-
-  amd64:
-    runs-on: docker
-    continue-on-error: true
-    container:
-      image: golang:1.26-bookworm
-    env:
-      CGO_ENABLED: "1"
-      GOOS: linux
-      GOARCH: amd64
-      CC: x86_64-linux-gnu-gcc
-      CXX: x86_64-linux-gnu-g++
-      PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
-      PKG_CONFIG_LIBDIR: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
       CGO_CXXFLAGS: "-O1 -w"
       GOFLAGS: "-buildvcs=false"
     steps:
@@ -76,7 +26,6 @@ jobs:
           apt-get install -y --no-install-recommends nodejs git pkg-config \
             gcc-x86-64-linux-gnu g++-x86-64-linux-gnu libc6-dev-amd64-cross \
             qtbase5-dev:amd64
-          pkg-config --modversion Qt5Widgets
 
       - uses: actions/checkout@v4
 
@@ -89,10 +38,24 @@ jobs:
           key: go-amd64-${{ hashFiles('go.sum') }}
           restore-keys: go-amd64-
 
-      - name: Build
-        run: go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
+      # pure-Go packages, run on the runner's own CPU (no Qt involved)
+      - name: Test
+        run: CGO_ENABLED=0 go test ./internal/core/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/...
+
+      - name: Build (x86_64)
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: amd64
+          CC: x86_64-linux-gnu-gcc
+          CXX: x86_64-linux-gnu-g++
+          PKG_CONFIG_LIBDIR: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+        run: |
+          pkg-config --modversion Qt5Widgets
+          go build -gcflags='meofishes/...=-e' -o meofishes ./cmd/meofishes
+          file meofishes || true
 
       - uses: actions/upload-artifact@v3
         with:
-          name: meofishes-linux-amd64
+          name: meofishes-linux-x86_64
           path: meofishes
