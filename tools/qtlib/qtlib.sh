@@ -14,10 +14,10 @@
 #
 # Env: JOBS (default: nproc), OPT (default: -O1), CXX (default: g++).
 #
-# The resulting meofishes binary needs libmiqt-qt5.so at run time. It looks
-# in the folder recorded at link time (rpath) and in ./lib next to the binary.
-# To ship it, copy third_party/miqt-shared/lib/libmiqt-qt5.so next to the
-# binary inside a lib/ folder.
+# The resulting meofishes binary needs libmiqt-qt5.so at run time; it finds
+# it through the rpath recorded at link time (third_party/miqt-shared/lib).
+# Elsewhere, run it with LD_LIBRARY_PATH pointing at a copy of the .so, or
+# use the normal build for binaries you share.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -99,7 +99,7 @@ EOF
 	go mod edit -replace "$MODPATH=./third_party/miqt-shared/mod"
 	echo
 	echo "pronto. Agora o build normal já usa a biblioteca:"
-	echo "  CGO_CXXFLAGS=\"-O1 -w\" go build -ldflags=\"-s -w -r $LIB:\\\$ORIGIN/lib\" -o meofishes ./cmd/meofishes"
+	echo '  CGO_CXXFLAGS="-O1 -w" go build -ldflags="-s -w" -o meofishes ./cmd/meofishes'
 }
 
 cmd_disable() {
