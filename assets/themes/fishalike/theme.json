@@ -1,0 +1,16 @@
+{
+  "id": "fishalike",
+  "name": "Fishalike",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "O tema padrão: vermelho claro escurecido, com toques de rosa claro e escuro. Fundo que respira com a capa do álbum.",
+  "style": "style.css",
+  "dark": true,
+  "preview": {
+    "background": "#241015",
+    "surface": "#3b1a21",
+    "accent": "#d9737a",
+    "highlight": "#f4b4c6",
+    "text": "#fbe9ec"
+  }
+}

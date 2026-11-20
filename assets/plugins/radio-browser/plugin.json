@@ -1,0 +1,43 @@
+{
+  "id": "radio-browser",
+  "name": "Radio Browser",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Milhares de rádios online do radio-browser.info. Plugin 100% declarativo: só endpoints e mapeamento de campos, sem código.",
+  "homepage": "https://www.radio-browser.info",
+  "types": ["source"],
+  "runtime": "declarative",
+  "hosts": ["*.api.radio-browser.info", "all.api.radio-browser.info"],
+  "settings": [
+    { "key": "server", "label": "Servidor", "default": "https://de1.api.radio-browser.info",
+      "description": "Qualquer espelho listado em all.api.radio-browser.info" },
+    { "key": "limit", "label": "Resultados por busca", "type": "number", "default": "60" },
+    { "key": "country", "label": "Código do país na página inicial", "default": "BR" }
+  ],
+  "source": {
+    "baseUrl": "{{settings.server}}",
+    "search": {
+      "url": "/json/stations/search?name={{query}}&limit={{settings.limit}}&hidebroken=true&order=clickcount&reverse=true",
+      "items": "$",
+      "map": {
+        "id": "stationuuid",
+        "title": "name",
+        "artist": "country || countrycode",
+        "album": "tags",
+        "cover": "favicon",
+        "streamUrl": "url_resolved || url",
+        "codec": "codec",
+        "bitrate": "bitrate"
+      }
+    },
+    "home": {
+      "url": "/json/stations/search?countrycode={{settings.country}}&limit=40&hidebroken=true&order=clickcount&reverse=true",
+      "items": "$",
+      "map": {
+        "id": "stationuuid", "title": "name", "artist": "country", "album": "tags",
+        "cover": "favicon", "streamUrl": "url_resolved || url"
+      }
+    },
+    "resolver": "direct"
+  }
+}

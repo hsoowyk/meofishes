@@ -1,0 +1,27 @@
+{
+  "id": "somafm-go",
+  "name": "SomaFM (plugin em Go)",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Rádios do SomaFM. Exemplo de plugin 'process' escrito em Go: é compilado na instalação (precisa do Go) e pode usar qualquer biblioteca Go.",
+  "homepage": "https://somafm.com",
+  "types": [
+    "source"
+  ],
+  "runtime": "process",
+  "entry": "./somafm-go",
+  "build": "test -f go.mod || cp go.mod.in go.mod; go build -tags meoplugin -o somafm-go .",
+  "settings": [
+    {
+      "key": "quality",
+      "label": "Qualidade",
+      "type": "choice",
+      "choices": [
+        "highest",
+        "high",
+        "low"
+      ],
+      "default": "highest"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "sakura-paper",
+  "name": "Sakura Paper",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Tema claro: papel creme, rosa cerejeira e vermelho suave.",
+  "extends": "fishalike",
+  "style": "style.css",
+  "dark": false,
+  "preview": { "background": "#fbf3f1", "surface": "#f3dedd", "accent": "#c9505e", "highlight": "#e46f93", "text": "#3a1e24" }
+}

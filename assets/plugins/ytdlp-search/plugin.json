@@ -1,0 +1,35 @@
+{
+  "id": "ytdlp-search",
+  "name": "YouTube / SoundCloud (yt-dlp)",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Busca no YouTube, YouTube Music ou SoundCloud usando a biblioteca Go 'ytdlp' do meofishes (precisa do yt-dlp instalado).",
+  "types": [
+    "source"
+  ],
+  "runtime": "script",
+  "entry": "main.js",
+  "modules": [
+    "ytdlp"
+  ],
+  "settings": [
+    {
+      "key": "site",
+      "label": "Site",
+      "type": "choice",
+      "choices": [
+        "youtube",
+        "soundcloud",
+        "ytmusic"
+      ],
+      "default": "youtube",
+      "description": "No YouTube Music o yt-dlp não informa artista nem duração na busca rápida; prefira YouTube."
+    },
+    {
+      "key": "limit",
+      "label": "Resultados",
+      "type": "number",
+      "default": "20"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "lavalink",
+  "name": "Lavalink",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Busca músicas num servidor Lavalink v4 (YouTube, SoundCloud, Bandcamp, Spotify/Deezer/Apple via LavaSrc…). O Lavalink resolve as faixas; o áudio toca pelo mpv.",
+  "types": ["source"],
+  "runtime": "script",
+  "entry": "main.js",
+  "modules": ["lavalink", "ytdlp"],
+  "settings": [
+    { "key": "host", "label": "Host", "default": "localhost" },
+    { "key": "port", "label": "Porta", "default": "2333" },
+    { "key": "password", "label": "Senha", "type": "password", "default": "youshallnotpass" },
+    { "key": "secure", "label": "HTTPS", "type": "bool", "default": "false" },
+    { "key": "prefix", "label": "Prefixo de busca", "type": "choice",
+      "choices": ["ytmsearch", "ytsearch", "scsearch", "spsearch", "dzsearch", "amsearch"], "default": "ytmsearch" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "lrclib",
+  "name": "LRCLIB",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Letras sincronizadas por linha do lrclib.net, como reserva do Meo Lyrics. Exemplo de plugin de letras declarativo.",
+  "homepage": "https://lrclib.net",
+  "types": [
+    "lyrics"
+  ],
+  "runtime": "declarative",
+  "hosts": [
+    "lrclib.net"
+  ],
+  "lyrics": {
+    "request": {
+      "url": "https://lrclib.net/api/search?track_name={{cleanTitle}}&artist_name={{primaryArtist}}"
+    },
+    "path": "[0].syncedLyrics || [0].plainLyrics",
+    "format": "auto",
+    "credit": "Letras do LRCLIB"
+  }
+}

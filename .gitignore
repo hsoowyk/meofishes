@@ -1,0 +1,5 @@
+/meofishes
+*.tar.gz
+erros.txt
+assets/plugins/somafm-go/go.mod
+assets/plugins/somafm-go/somafm-go

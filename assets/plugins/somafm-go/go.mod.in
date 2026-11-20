@@ -1,0 +1,3 @@
+module somafm-go
+
+go 1.22

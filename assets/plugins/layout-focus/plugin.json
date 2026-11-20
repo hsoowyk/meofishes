@@ -1,0 +1,21 @@
+{
+  "id": "layout-focus",
+  "name": "Layout: Foco nas letras",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Letras grandes no centro, capa à esquerda, menu compacto à direita.",
+  "types": ["layout"],
+  "layout": {
+    "box": "v", "spacing": 0,
+    "children": [
+      { "split": "h", "stretch": 1, "sizes": [340, 900, 220], "children": [
+        { "box": "v", "name": "FocusLeft", "minWidth": 280, "margins": [28, 28, 12, 28], "children": [
+          { "region": "cover" }, { "region": "queue", "stretch": 1 }
+        ]},
+        { "region": "lyrics", "stretch": 1 },
+        { "region": "sidebar", "minWidth": 190, "maxWidth": 260 }
+      ]},
+      { "region": "playerbar" }
+    ]
+  }
+}
