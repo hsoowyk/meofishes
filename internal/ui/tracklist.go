@@ -110,7 +110,7 @@ func (l *TrackList) SetTracks(ts []core.Track, emptyMsg string) {
 	// cascade in
 	singleShot(0, func() {
 		for i, r := range l.rows {
-			if i > 30 {
+			if i > 12 { // only what is on screen
 				break
 			}
 			l.u.Enter(r.QWidget, "TrackRow", i)

@@ -100,6 +100,7 @@ type UI struct {
 	libNav     *qt.QWidget
 	nowCard    *qt.QWidget
 	tour       *Tour
+	pageFx     *Transition
 
 	// pages
 	home    *homePage

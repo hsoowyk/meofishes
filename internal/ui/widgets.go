@@ -386,9 +386,15 @@ func (b *Backdrop) SetTint(c theme.Color, ok bool) {
 	}
 	b.hasTint = true
 	dur := time.Duration(p.Ms("backdrop-dynamic-duration", 1200)) * time.Millisecond
+	// repainting the background repaints the whole window: a slow color
+	// fade at 30 fps looks the same and costs a fraction
+	last := time.Time{}
 	b.u.anim.Tween(b, dur, 0, "in-out-sine", func(t float64) {
 		b.tint = theme.Mix(from, c, t)
-		b.invalidate()
+		if now := time.Now(); now.Sub(last) >= 33*time.Millisecond || t >= 1 {
+			last = now
+			b.invalidate()
+		}
 	}, nil)
 }
 

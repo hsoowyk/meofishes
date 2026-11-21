@@ -162,12 +162,14 @@ func singleShot(ms int, f func()) {
 
 // ---------------------------------------------------------------- enter animations
 
-// Enter plays the -meo-enter animation of a widget (fade, slide-up,
-// slide-down, slide-left, slide-right, zoom, none).
+// Enter plays the -meo-enter animation of a widget (slide-up, slide-down,
+// slide-left, slide-right, none). Widgets are only moved, never faded with a
+// QGraphicsEffect: effects render the whole subtree off-screen every frame
+// (very slow) and nesting them crashes Qt. "fade" behaves like "none".
 func (u *UI) Enter(w *qt.QWidget, kind string, index int) {
 	p := u.style.For(w, kind)
 	mode := p.Str("enter", "none")
-	if mode == "none" || !w.IsVisible() {
+	if mode == "none" || mode == "fade" || !w.IsVisible() {
 		return
 	}
 	dur := time.Duration(p.Ms("enter-duration", 400)) * time.Millisecond
@@ -180,14 +182,10 @@ func (u *UI) Enter(w *qt.QWidget, kind string, index int) {
 	u.animateIn(w, mode, dur, delay, ease, dist, nil)
 }
 
-// animateIn fades/slides w in. Sliding moves the widget from an offset back
-// to the position its layout gave it.
+// animateIn slides w from an offset back to the position its layout gave it.
+// The tween is keyed by the widget pointer: whoever deletes w must cancel it
+// (deco.dispose does) — use slideKey(w).
 func (u *UI) animateIn(w *qt.QWidget, mode string, dur, delay time.Duration, ease string, dist float64, done func()) {
-	eff := qt.NewQGraphicsOpacityEffect2(w.QObject)
-	eff.SetOpacity(0)
-	w.SetGraphicsEffect(eff.QGraphicsEffect)
-	pos := w.Pos()
-	x0, y0 := pos.X(), pos.Y()
 	dx, dy := 0.0, 0.0
 	switch mode {
 	case "slide-up":
@@ -199,19 +197,107 @@ func (u *UI) animateIn(w *qt.QWidget, mode string, dur, delay time.Duration, eas
 	case "slide-right":
 		dx = -dist
 	}
-	key := w.UnsafePointer()
-	u.anim.Tween(key, dur, delay, ease, func(t float64) {
-		eff.SetOpacity(clamp(t, 0, 1))
-		if dx != 0 || dy != 0 {
-			w.Move(x0+int(dx*(1-t)), y0+int(dy*(1-t)))
-		}
-	}, func() {
-		w.SetGraphicsEffect(nil)
-		if dx != 0 || dy != 0 {
-			w.Move(x0, y0)
-		}
+	if dx == 0 && dy == 0 {
 		if done != nil {
 			done()
+		}
+		return
+	}
+	pos := w.Pos()
+	x0, y0 := pos.X(), pos.Y()
+	w.Move(x0+int(dx), y0+int(dy))
+	u.anim.Tween(slideKey(w), dur, delay, ease, func(t float64) {
+		w.Move(x0+int(dx*(1-t)), y0+int(dy*(1-t)))
+	}, func() {
+		w.Move(x0, y0)
+		if done != nil {
+			done()
+		}
+	})
+}
+
+func slideKey(w *qt.QWidget) any { return w.UnsafePointer() }
+
+// ---------------------------------------------------------------- page transitions
+
+// Transition animates a page change cheaply: a snapshot of the old page is
+// painted on top of the new one and fades/slides away (one pixmap per frame,
+// instead of re-rendering the page through an effect).
+type Transition struct {
+	*qt.QWidget
+	u    *UI
+	px   *qt.QPixmap
+	t    float64
+	mode string
+	dist float64
+}
+
+func (u *UI) newTransition(parent *qt.QWidget) *Transition {
+	tr := &Transition{QWidget: qt.NewQWidget(parent), u: u}
+	tr.SetObjectName("PageTransition")
+	tr.SetAttribute(qt.WA_TransparentForMouseEvents)
+	tr.Hide()
+	tr.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
+		if tr.px == nil {
+			return
+		}
+		p := qt.NewQPainter2(tr.QPaintDevice)
+		k := 1 - tr.t
+		dx, dy := 0, 0
+		switch tr.mode {
+		case "slide-up":
+			dy = -int(tr.dist * tr.t)
+		case "slide-left":
+			dx = -int(tr.dist * tr.t)
+		case "slide-right":
+			dx = int(tr.dist * tr.t)
+		case "zoom":
+			k = 1 - tr.t
+		}
+		p.SetOpacity(k)
+		if tr.mode == "zoom" {
+			s := 1 + 0.06*tr.t
+			w, h := float64(tr.Width()), float64(tr.Height())
+			r := rectF(w*(1-s)/2, h*(1-s)/2, w*s, h*s)
+			sr := rectF(0, 0, float64(tr.px.Width()), float64(tr.px.Height()))
+			p.DrawPixmap(r, tr.px, sr)
+			r.Delete()
+			sr.Delete()
+		} else {
+			p.DrawPixmap9(dx, dy, tr.px)
+		}
+		p.End()
+		p.Delete()
+	})
+	return tr
+}
+
+// Run snapshots old, then animates the snapshot away over the new page.
+func (tr *Transition) Run(old *qt.QWidget, mode string, dur time.Duration, ease string, dist float64) {
+	if old == nil || mode == "none" || dur <= 0 {
+		return
+	}
+	if tr.px != nil {
+		tr.px.Delete()
+		tr.px = nil
+	}
+	snap := old.Grab()
+	if snap == nil || snap.IsNull() {
+		return
+	}
+	tr.px = qt.NewQPixmap5(snap)
+	tr.mode, tr.dist, tr.t = mode, dist, 0
+	tr.SetGeometry(old.X(), old.Y(), old.Width(), old.Height())
+	tr.Show()
+	tr.Raise()
+	tr.u.anim.Tween(tr, dur, 0, ease, func(t float64) {
+		tr.t = t
+		tr.Update()
+	}, func() {
+		tr.Hide()
+		if tr.px != nil {
+			tr.px.Delete()
+			tr.px = nil
 		}
 	})
 }

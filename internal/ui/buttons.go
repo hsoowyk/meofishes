@@ -24,6 +24,7 @@ type deco struct {
 	bg, icon theme.Color
 	scale    float64
 	enabled  bool // the theme defines -meo-bg or -meo-hover-bg
+	pc       *P   // cached props
 }
 
 func (u *UI) newDeco(w *qt.QWidget, kind string) *deco {
@@ -39,7 +40,15 @@ func (d *deco) dispose() {
 	d.u.anim.Cancel(d, [2]any{d, "press"}, d.w.UnsafePointer())
 }
 
-func (d *deco) props() P { return d.u.style.For(d.w, d.kind) }
+// props are cached until the theme changes (painting asks for them often,
+// and building the selectors costs several calls into Qt).
+func (d *deco) props() P {
+	if d.pc == nil {
+		p := d.u.style.For(d.w, d.kind)
+		d.pc = &p
+	}
+	return *d.pc
+}
 
 func (d *deco) target() (bg, icon theme.Color) {
 	p := d.props()
@@ -58,6 +67,9 @@ func (d *deco) target() (bg, icon theme.Color) {
 }
 
 func (d *deco) refresh(immediate bool) {
+	if immediate {
+		d.pc = nil // theme changed
+	}
 	p := d.props()
 	d.enabled = p.Has("bg") || p.Has("hover-bg") || p.Has("active-bg")
 	bg, icon := d.target()

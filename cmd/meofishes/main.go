@@ -11,9 +11,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -36,7 +39,26 @@ func main() {
 			os.Exit(code)
 		}
 	}
+	crashLog()
 	os.Exit(ui.Run(assets.FS))
+}
+
+// crashLog keeps a log and the trace of any crash in
+// ~/.cache/meofishes/meofishes.log and crash.log, so problems can be reported
+// even when the app was opened from the applications menu.
+func crashLog() {
+	dir := config.DefaultPaths().Cache
+	if f, err := os.OpenFile(filepath.Join(dir, "crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+		fmt.Fprintf(f, "\n=== meofishes %s started %s ===\n", config.Version, time.Now().Format(time.RFC3339))
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	}
+	logPath := filepath.Join(dir, "meofishes.log")
+	if st, err := os.Stat(logPath); err == nil && st.Size() > 4<<20 {
+		_ = os.Rename(logPath, logPath+".old")
+	}
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+	}
 }
 
 func manager() (*plugin.Manager, *config.Config) {

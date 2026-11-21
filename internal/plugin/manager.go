@@ -227,6 +227,9 @@ type Manager struct {
 	listeners []func()
 	lastMu    sync.Mutex
 	last      *LastLyrics
+	// stMu guards the maps of State: background searches read them while
+	// the interface changes them (a concurrent map access kills the app).
+	stMu sync.RWMutex
 }
 
 // NewManager creates a manager. Call Register for builtins, then Load.
@@ -270,15 +273,19 @@ func (mg *Manager) Settings(id string) map[string]string {
 			out[s.Key] = s.Default
 		}
 	}
+	mg.stMu.RLock()
 	for k, v := range mg.State.Settings[id] {
 		out[k] = v
 	}
+	mg.stMu.RUnlock()
 	return out
 }
 
 // SetSettings stores new settings and restarts the plugin.
 func (mg *Manager) SetSettings(id string, values map[string]string) error {
+	mg.stMu.Lock()
 	mg.State.Settings[id] = values
+	mg.stMu.Unlock()
 	if mg.Save != nil {
 		mg.Save()
 	}
@@ -294,15 +301,21 @@ func (mg *Manager) SetSettings(id string, values map[string]string) error {
 }
 
 // Enabled reports whether a plugin is enabled.
-func (mg *Manager) Enabled(id string) bool { return !mg.State.Disabled[id] }
+func (mg *Manager) Enabled(id string) bool {
+	mg.stMu.RLock()
+	defer mg.stMu.RUnlock()
+	return !mg.State.Disabled[id]
+}
 
 // SetEnabled toggles a plugin.
 func (mg *Manager) SetEnabled(id string, on bool) error {
+	mg.stMu.Lock()
 	if on {
 		delete(mg.State.Disabled, id)
 	} else {
 		mg.State.Disabled[id] = true
 	}
+	mg.stMu.Unlock()
 	if mg.Save != nil {
 		mg.Save()
 	}
@@ -526,9 +539,11 @@ func (mg *Manager) WithCap(c string) []*Plugin {
 		}
 	}
 	rank := map[string]int{}
+	mg.stMu.RLock()
 	for i, id := range mg.State.Order[c] {
 		rank[id] = i + 1
 	}
+	mg.stMu.RUnlock()
 	r := func(id string) int {
 		if v := rank[id]; v > 0 {
 			return v
@@ -541,7 +556,9 @@ func (mg *Manager) WithCap(c string) []*Plugin {
 
 // SetOrder stores the priority of plugins for a capability.
 func (mg *Manager) SetOrder(c string, ids []string) {
+	mg.stMu.Lock()
 	mg.State.Order[c] = ids
+	mg.stMu.Unlock()
 	if mg.Save != nil {
 		mg.Save()
 	}
@@ -879,8 +896,10 @@ func (mg *Manager) Uninstall(id string) error {
 	if err := os.RemoveAll(p.Dir); err != nil {
 		return err
 	}
+	mg.stMu.Lock()
 	delete(mg.State.Settings, id)
 	delete(mg.State.Disabled, id)
+	mg.stMu.Unlock()
 	if mg.Save != nil {
 		mg.Save()
 	}

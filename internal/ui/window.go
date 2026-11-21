@@ -200,14 +200,19 @@ func (u *UI) goPage(id string) {
 		}
 	}
 	u.curPage = id
-	u.pages.SetCurrentIndex(idx)
-	page := u.pages.Widget(idx)
+	old := u.pages.CurrentWidget()
 	p := u.style.For(u.pages.QWidget, "QStackedWidget")
 	mode := p.Str("transition", "fade")
-	if mode != "none" {
+	if mode != "none" && old != nil && old.IsVisible() {
+		if u.pageFx == nil {
+			u.pageFx = u.newTransition(u.pages.ParentWidget())
+		}
 		dur := time.Duration(p.Ms("transition-duration", 300)) * time.Millisecond
-		u.animateIn(page, mode, dur, 0, p.Str("transition-easing", "out-cubic"), p.Len("transition-distance", 24), nil)
+		pos := u.pages.Pos()
+		u.pageFx.Run(old, mode, dur, p.Str("transition-easing", "out-cubic"), p.Len("transition-distance", 24))
+		u.pageFx.Move(pos.X(), pos.Y())
 	}
+	u.pages.SetCurrentIndex(idx)
 	switch id {
 	case "home":
 		u.home.refresh()

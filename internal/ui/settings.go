@@ -129,7 +129,6 @@ func (sp *settingsPage) open(id string) {
 		case "themes":
 			u.themePg.refresh()
 		}
-		u.animateIn(cat.fixed, "fade", 220e6, 0, "out-cubic", 0, nil)
 		return
 	}
 	sa := sp.pages[id]
@@ -145,7 +144,6 @@ func (sp *settingsPage) open(id string) {
 	b.AddStretch()
 	sa.SetWidget(inner)
 	sp.stack.SetCurrentWidget(sa.QWidget)
-	u.animateIn(inner, "fade", 220e6, 0, "out-cubic", 0, nil)
 }
 
 // ---------------------------------------------------------------- builder
@@ -432,7 +430,7 @@ func (sp *settingsPage) appearance(s *sb) {
 	s.section(tr("Background"))
 	s.styleToggle(tr("Color from the album cover"), tr("The background slowly takes the color of the song playing."), "#Root|-meo-backdrop-dynamic", true)
 	s.styleNumber(tr("Strength of the cover color"), "", "#Root|-meo-backdrop-dynamic-strength", "", 0, 100, 0.38, 100)
-	s.styleNumber(tr("Breathing light"), tr("Period of the soft pulsing light; 0 turns it off."), "#Root|-meo-backdrop-glow-pulse", "ms", 0, 30000, 9000, 1)
+	s.styleNumber(tr("Breathing light"), tr("Period of the soft pulsing light; 0 turns it off."), "#Root|-meo-backdrop-glow-pulse", "ms", 0, 30000, 0, 1)
 	s.styleNumber(tr("Blurred cover in the fullscreen player"), tr("Opacity of the cover behind the fullscreen player."), "#FullPlayer|-meo-backdrop-image-opacity", "", 0, 100, 0.55, 100)
 	s.text(tr("Your name"), tr("Shown in the greeting on the home page."), u.cfg.Prefs.UserName, "", func(v string) { u.cfg.Prefs.UserName = v })
 }

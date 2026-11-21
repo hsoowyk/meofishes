@@ -69,7 +69,8 @@ QMainWindow, #Root { background: var(--wine-1); }
   -meo-backdrop-glow-x: 0.78;
   -meo-backdrop-glow-y: 0.1;
   -meo-backdrop-glow-radius: 0.85;
-  -meo-backdrop-glow-pulse: 9000ms;          /* 0 disables the breathing */
+  -meo-backdrop-glow-pulse: 0;               /* breathing light period (e.g. 9000ms); 0 = still.
+                                               It repaints the whole window, so it is off by default */
 }
 
 QToolTip {
@@ -194,7 +195,7 @@ QPushButton[role="nav"] {
 
 #Pages {
   background: transparent;
-  -meo-transition: slide-up;                /* fade | slide-up | slide-left | slide-right | zoom | none */
+  -meo-transition: fade;                /* fade | slide-up | slide-left | slide-right | zoom | none */
   -meo-transition-duration: 380ms;
   -meo-transition-easing: out-quint;
   -meo-transition-distance: 26px;
@@ -332,8 +333,8 @@ QPushButton[role="control"], QPushButton[role="window"] {
   -meo-drop-color: var(--pink-light);        /* drag & drop indicator */
   -meo-hover-duration: 140ms;
   -meo-enter: slide-up;
-  -meo-enter-duration: 420ms;
-  -meo-enter-stagger: 22ms;
+  -meo-enter-duration: 300ms;
+  -meo-enter-stagger: 18ms;
   -meo-enter-easing: out-cubic;
   -meo-enter-distance: 14px;
 }
@@ -382,7 +383,7 @@ QLabel[role="chip"] {
   -meo-hover-height: 6px;
   -meo-radius: 3px;
   -meo-handle-on-hover: true;
-  -meo-smooth: 140ms;
+  -meo-smooth: 0;                          /* value easing (e.g. 140ms); keeps animating while playing */
 }
 #NowCardSeek { -meo-height: 3px; -meo-hover-height: 5px; -meo-handle-size: 10px; }
 
