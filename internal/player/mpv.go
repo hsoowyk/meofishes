@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -49,6 +50,11 @@ type Options struct {
 	Exclusive     bool   // exclusive audio output where supported
 	Volume        float64
 	Extra         []string // extra mpv arguments
+	// Wid is the native window video is drawn into (0 = no video support).
+	// Video stays off (vid=no) until SetVideo turns it on.
+	Wid      uintptr
+	X11Video bool   // the app runs on X11/XWayland: use an X11 GPU context
+	VideoFmt string // yt-dlp format used while video is on
 }
 
 // Events from the player (called from a background goroutine).
@@ -106,13 +112,20 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 		opt.Volume = 80
 	}
 	args := []string{
-		"--idle=yes", "--no-video", "--no-terminal", "--force-window=no",
+		"--idle=yes", "--vid=no", "--no-terminal", "--force-window=no",
 		"--input-ipc-server=" + sock, "--audio-display=no", "--keep-open=no",
 		"--ytdl-format=bestaudio/best", "--cache=yes",
 		fmt.Sprintf("--demuxer-max-bytes=%dMiB", opt.CacheMB),
 		fmt.Sprintf("--demuxer-readahead-secs=%d", opt.ReadaheadSecs),
 		"--cache-pause-initial=no", "--cache-pause-wait=1",
 		fmt.Sprintf("--volume=%g", opt.Volume), "--replaygain=" + opt.ReplayGain,
+	}
+	if opt.Wid != 0 {
+		args = append(args, fmt.Sprintf("--wid=%d", opt.Wid), "--keepaspect=yes", "--hwdec=auto-safe",
+			"--osc=no", "--osd-level=0", "--input-cursor=no", "--input-default-bindings=no", "--cursor-autohide=no")
+		if opt.X11Video {
+			args = append(args, "--gpu-context=x11egl,x11")
+		}
 	}
 	if opt.Normalize {
 		args = append(args, "--af=lavfi=[dynaudnorm=f=250:g=15]")
@@ -125,6 +138,8 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	}
 	args = append(args, opt.Extra...)
 	cmd := exec.Command(bin, args...)
+	// mpv dies with meofishes, even if meofishes crashes
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -267,6 +282,35 @@ func (m *MPV) Load(url string, headers map[string]string) error {
 	_ = m.command("set_property", "http-header-fields", hs)
 	_ = m.command("set_property", "pause", false)
 	return m.command("loadfile", url, "replace")
+}
+
+// SetVideo turns video on (in the window given to Start) or off. format is
+// the yt-dlp format for web pages while video is on.
+func (m *MPV) SetVideo(on bool, format string) error {
+	if on {
+		if format == "" {
+			format = "bestvideo[height<=?720]+bestaudio/best"
+		}
+		_ = m.command("set_property", "ytdl-format", format)
+		return m.command("set_property", "vid", "auto")
+	}
+	_ = m.command("set_property", "ytdl-format", "bestaudio/best")
+	return m.command("set_property", "vid", "no")
+}
+
+// HasVideo reports whether the current file has a video track.
+func (m *MPV) HasVideo() bool {
+	v, err := m.Get("track-list")
+	if err != nil {
+		return false
+	}
+	list, _ := v.([]any)
+	for _, x := range list {
+		if t, ok := x.(map[string]any); ok && t["type"] == "video" && t["albumart"] != true {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *MPV) SetPaused(p bool) error    { return m.command("set_property", "pause", p) }

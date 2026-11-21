@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
 	"meofishes/internal/netlog"
+	"meofishes/internal/offline"
 	"meofishes/internal/plugin"
 	"meofishes/internal/stream"
 	"meofishes/internal/theme"
@@ -36,6 +38,7 @@ type Core struct {
 	Catalog *catalog.Catalog
 	Library *library.Library
 	Proxy   *stream.Proxy
+	Offline *offline.Store
 	Assets  fs.FS
 
 	logMu sync.Mutex
@@ -82,6 +85,9 @@ func New(assets fs.FS) *Core {
 	}
 	c.Library = library.Open(filepath.Join(paths.Data, "library.json"))
 	c.Library.KeepHistory = cfg.Prefs.KeepHistory
+	c.Offline = offline.Open(filepath.Join(paths.Data, "offline.json"), c.DownloadDir(), filepath.Join(paths.Cache, "songs"))
+	c.Offline.MaxCacheMB = cfg.Prefs.CacheSongsMB
+	c.Offline.UserAgent = c.proxyOptions().UserAgent
 	c.FirstRun()
 	c.Plugins.Load()
 	c.ApplyEasings()
@@ -229,6 +235,20 @@ func (c *Core) proxyOptions() stream.Options {
 	pr := c.Cfg.Prefs
 	return stream.Options{ChunkSize: int64(max(64, pr.ChunkKB)) << 10, Workers: pr.Workers, Full: pr.FullDownload,
 		UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+}
+
+// DownloadDir is where downloaded songs go (~/Music/meofishes by default).
+func (c *Core) DownloadDir() string {
+	if d := strings.TrimSpace(c.Cfg.Prefs.DownloadDir); d != "" {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	for _, m := range []string{"Music", "Músicas"} {
+		if st, err := os.Stat(filepath.Join(home, m)); err == nil && st.IsDir() {
+			return filepath.Join(home, m, "meofishes")
+		}
+	}
+	return filepath.Join(c.Paths.Data, "downloads")
 }
 
 // Close stops plugins and the proxy and saves the config.

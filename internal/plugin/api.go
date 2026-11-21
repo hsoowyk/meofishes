@@ -35,6 +35,8 @@ type Stream struct {
 	Page bool `json:"page,omitempty"`
 	// Via is the plugin that resolved it (filled by the manager).
 	Via string `json:"-"`
+	// PageURL keeps the web page a direct URL was extracted from (video).
+	PageURL string `json:"-"`
 }
 
 // Searcher is a src capability.

@@ -13,6 +13,7 @@ import (
 	"meofishes/internal/config"
 	"meofishes/internal/core"
 	"meofishes/internal/library"
+	"meofishes/internal/offline"
 )
 
 type libraryPage struct {
@@ -44,7 +45,9 @@ func (u *UI) buildLibrary() *libraryPage {
 	imp.OnClicked(u.importPlaylists)
 	exp := qt.NewQPushButton3(tr("Export everything…"))
 	exp.OnClicked(func() { u.exportPlaylists(u.core.Library.All()...) })
-	for _, x := range []*qt.QPushButton{newp, imp, exp} {
+	dls := qt.NewQPushButton3(tr("Downloaded songs"))
+	dls.OnClicked(func() { u.openPlaylist(downloadsID) })
+	for _, x := range []*qt.QPushButton{newp, imp, exp, dls} {
 		row.AddWidget(x.QWidget)
 	}
 	row.AddStretch()
@@ -220,9 +223,26 @@ func (u *UI) openPlaylist(id string) {
 	u.syncLibraryNav("playlist")
 }
 
+// downloadsID opens the virtual playlist of downloaded songs.
+const downloadsID = "downloads"
+
+func (lp *libraryPage) downloadsPlaylist() *library.Playlist {
+	p := &library.Playlist{ID: downloadsID, Name: tr("Downloaded songs"), Kind: "downloads"}
+	for _, e := range lp.u.core.Offline.List(offline.Download) {
+		p.Tracks = append(p.Tracks, e.Track)
+	}
+	n, size := lp.u.core.Offline.Usage(offline.Download)
+	p.Description = humanBytes(size) + " · " + lp.u.core.DownloadDir()
+	_ = n
+	return p
+}
+
 func (lp *libraryPage) fillDetail() {
 	u := lp.u
 	p := u.core.Library.Get(lp.openID)
+	if lp.openID == downloadsID {
+		p = lp.downloadsPlaylist()
+	}
 	if p == nil {
 		lp.openID = ""
 		if u.curPage == "playlist" {
@@ -260,22 +280,28 @@ func (lp *libraryPage) fillDetail() {
 	}
 	id := p.ID
 	btn(tr("Play"), true, func() {
-		if pl := u.core.Library.Get(id); pl != nil && len(pl.Tracks) > 0 {
-			u.PlayList(pl.Tracks, 0)
+		if len(p.Tracks) > 0 {
+			u.PlayList(p.Tracks, 0)
 		}
 	})
 	btn(tr("Shuffle"), false, func() {
-		if pl := u.core.Library.Get(id); pl != nil && len(pl.Tracks) > 0 {
-			ts := append([]core.Track(nil), pl.Tracks...)
+		if len(p.Tracks) > 0 {
+			ts := append([]core.Track(nil), p.Tracks...)
 			rand.Shuffle(len(ts), func(i, j int) { ts[i], ts[j] = ts[j], ts[i] })
 			u.PlayList(ts, 0)
 		}
 	})
-	btn(tr("Export…"), false, func() {
-		if pl := u.core.Library.Get(id); pl != nil {
-			u.exportPlaylists(pl)
-		}
-	})
+	tracks := p.Tracks
+	btn(tr("Download all"), false, func() { u.downloadTracks(tracks) })
+	if id == downloadsID {
+		btn(tr("Open folder"), false, func() { u.openFolder(u.core.DownloadDir()) })
+	} else {
+		btn(tr("Export…"), false, func() {
+			if pl := u.core.Library.Get(id); pl != nil {
+				u.exportPlaylists(pl)
+			}
+		})
+	}
 	if p.Kind == library.KindRemote {
 		btn(tr("Refresh"), false, func() {
 			if pl := u.core.Library.Get(id); pl != nil {
@@ -283,12 +309,14 @@ func (lp *libraryPage) fillDetail() {
 			}
 		})
 	}
-	more := u.iconButton("PlaylistMore", "more", tr("More"))
-	more.OnClicked(func() { u.playlistMenu(id) })
-	lp.dActions.AddWidget(more.QWidget)
+	if id != downloadsID {
+		more := u.iconButton("PlaylistMore", "more", tr("More"))
+		more.OnClicked(func() { u.playlistMenu(id) })
+		lp.dActions.AddWidget(more.QWidget)
+	}
 	lp.dActions.AddStretch()
 
-	editable := p.Kind != library.KindRemote
+	editable := p.Kind != library.KindRemote && id != downloadsID
 	lp.dList.Reorderable = editable
 	lp.dList.OnMove = nil
 	lp.dList.OnRemove = nil

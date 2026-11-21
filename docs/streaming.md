@@ -34,3 +34,31 @@ song's **frequencies**, updated every 0.1 s. A second, silent mpv decodes the
 song (through the proxy, so nothing is downloaded twice) to mono 11 kHz PCM;
 every 100 ms becomes one frame of log-spaced bands (40 Hz – 5 kHz). Style it
 with `#FullVisualizer` ([properties](themes/properties.md#visualizer--fullvisualizer)).
+
+## Songs on disk (offline)
+
+- **Keep played songs** (on by default): a song downloaded in full by the
+  proxy and played to the end (or skipped after it finished downloading) is
+  saved in `~/.cache/meofishes/songs`. Next time it plays from disk —
+  instantly, even offline. The cache has a size limit (Settings → Storage →
+  Song cache size); the least recently played songs go first.
+- **Download**: right-click a song → Download, or **Download all** on a
+  playlist. Downloads go to `~/Music/meofishes` (or the folder in Settings →
+  Storage) and stay until removed. **Library → Downloaded songs** lists them.
+
+Songs on disk are matched by track (plugin + id), so they are used whatever
+plugin would resolve them. The index is `~/.local/share/meofishes/offline.json`.
+
+## Video
+
+The video button in the fullscreen player (or Settings → Playback → Show
+video automatically) plays the song's video — YouTube pages and local video
+files — in the right side of the fullscreen player, at the quality chosen in
+Settings → Playback → Video quality. Turning it on reloads the song at the same
+position, with mpv opening the page itself (no chunked download while video is
+on).
+
+mpv draws the video inside the window through a native child window
+(`--wid`). That only works on X11, so on Wayland meofishes runs through
+XWayland (Settings → Playback → Run on X11 for video, on by default; set
+`QT_QPA_PLATFORM` yourself to override).

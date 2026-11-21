@@ -55,6 +55,9 @@ func TestProxyChunks(t *testing.T) {
 	if resp.StatusCode != 206 || !bytes.Equal(got, data[3000000:]) {
 		t.Fatalf("seek: status %d, %d bytes", resp.StatusCode, len(got))
 	}
+	if all, _, _, ok := p.Complete(local); !ok || !bytes.Equal(all, data) {
+		t.Fatalf("complete: ok=%v len=%d", ok, len(all))
+	}
 	st := p.Stats()
 	if len(st) != 1 || st[0].Size != int64(len(data)) {
 		t.Fatalf("stats: %+v", st)

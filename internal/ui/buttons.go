@@ -31,6 +31,9 @@ func (u *UI) newDeco(w *qt.QWidget, kind string) *deco {
 	d := &deco{u: u, w: w, kind: kind, scale: 1}
 	d.refresh(true)
 	u.style.Watch(d, func() { d.refresh(true) })
+	// forget the widget as soon as Qt deletes it (whoever deleted it): a
+	// theme change must never reach a deleted widget
+	w.OnDestroyed(d.dispose)
 	return d
 }
 
@@ -187,6 +190,7 @@ func (u *UI) navButton(name, icon, tip string) *NavButton {
 		s := int(b.d.props().Len("size", 46))
 		b.SetFixedSize2(s, s)
 	})
+	b.OnDestroyed(func() { u.style.Unwatch([2]any{b, "size"}); u.anim.Cancel([2]any{b, "ind"}) })
 	b.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) { super(e); b.d.setHover(true) })
 	b.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { super(e); b.d.setHover(false) })
 	b.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) { super(e); b.d.setPressed(true) })
@@ -464,6 +468,13 @@ func drawIcon(p *qt.QPainter, name string, cx, cy, size float64, c theme.Color) 
 		stroke(false, 14, 8, 21, 8)
 		stroke(false, 14, 12.5, 21, 12.5)
 		stroke(false, 4, 18.5, 21, 18.5)
+	case "video":
+		stroke(true, 3, 6.5, 16, 6.5, 16, 17.5, 3, 17.5)
+		fill(16.5, 12, 21, 8, 21, 16)
+	case "download":
+		stroke(false, 12, 4, 12, 15)
+		stroke(false, 7.5, 10.5, 12, 15, 16.5, 10.5)
+		stroke(false, 5, 19.5, 19, 19.5)
 	case "minimize":
 		stroke(false, 6, 12, 18, 12)
 	case "maximize":

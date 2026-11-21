@@ -13,6 +13,7 @@ import (
 	"math/cmplx"
 	"os/exec"
 	"sync"
+	"syscall"
 )
 
 const (
@@ -75,6 +76,7 @@ func (s *Spectrum) run(ctx context.Context, url string, headers map[string]strin
 		args = append(args, "--http-header-fields="+hs)
 	}
 	cmd := exec.CommandContext(ctx, "mpv", append(args, url)...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL} // dies with meofishes
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err

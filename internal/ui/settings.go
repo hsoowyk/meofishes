@@ -14,6 +14,7 @@ import (
 	"meofishes/internal/config"
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
+	"meofishes/internal/offline"
 	"meofishes/internal/player"
 	"meofishes/internal/plugin"
 	"meofishes/internal/theme"
@@ -542,6 +543,12 @@ func (sp *settingsPage) playback(s *sb) {
 		}
 	})
 
+	s.section(tr("Video"))
+	s.choice(tr("Video quality"), tr("Maximum height of videos from web pages."), [][2]string{{"360", "360p"}, {"480", "480p"}, {"720", "720p"}, {"1080", "1080p"}, {"2160", "4K"}},
+		itoa(u.cfg.Prefs.VideoQuality), func(v string) { u.cfg.Prefs.VideoQuality = atoiDef(v, 720) })
+	s.toggle(tr("Show video automatically"), tr("Turn the video on for songs that have one (YouTube)."), u.cfg.Prefs.VideoAuto, func(on bool) { u.cfg.Prefs.VideoAuto = on })
+	s.toggle(tr("Run on X11 for video"), tr("On Wayland, mpv can only draw video inside the window through XWayland. Needs a restart."), u.cfg.Prefs.VideoX11, func(on bool) { u.cfg.Prefs.VideoX11 = on })
+
 	s.section(tr("Player"))
 	opts := [][2]string{{"", "mpv"}}
 	for _, p := range u.core.Plugins.All() {
@@ -710,6 +717,22 @@ func (sp *settingsPage) shortcuts(s *sb) {
 func (sp *settingsPage) storage(s *sb) {
 	u := sp.u
 	size := func(dir string) string { return humanBytes(dirSize(dir)) }
+	s.section(tr("Songs on disk"))
+	dn, dsize := u.core.Offline.Usage(offline.Download)
+	cn, csize := u.core.Offline.Usage(offline.Cache)
+	s.toggle(tr("Keep played songs"), tr("Songs played to the end stay on disk and play instantly, even offline."), u.cfg.Prefs.AutoCache, func(on bool) { u.cfg.Prefs.AutoCache = on })
+	s.number(tr("Song cache size"), "", 64, 65536, u.cfg.Prefs.CacheSongsMB, "MB", func(v int) {
+		u.cfg.Prefs.CacheSongsMB = v
+		u.core.Offline.MaxCacheMB = v
+		u.core.Offline.Trim()
+	})
+	s.button(tr("Song cache"), plural(cn, "{n} song", "{n} songs")+" · "+humanBytes(csize), tr("Clear"), func() { u.core.Offline.Clear(offline.Cache); s.refresh() })
+	s.text(tr("Downloads folder"), plural(dn, "{n} song", "{n} songs")+" · "+humanBytes(dsize), u.cfg.Prefs.DownloadDir, u.core.DownloadDir(), func(v string) {
+		u.cfg.Prefs.DownloadDir = v
+		u.core.Offline.DownloadDir = u.core.DownloadDir()
+	})
+	s.button(tr("Downloaded songs"), "", tr("Open"), func() { u.openPlaylist(downloadsID) })
+	s.section(tr("Other caches"))
 	covers := filepath.Join(u.core.Paths.Cache, "covers")
 	lyr := filepath.Join(u.core.Paths.Cache, "lyrics")
 	s.button(tr("Cover cache"), size(covers), tr("Clear"), func() { _ = os.RemoveAll(covers); _ = os.MkdirAll(covers, 0o755); s.refresh() })

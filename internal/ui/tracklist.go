@@ -7,6 +7,7 @@ import (
 
 	"meofishes/internal/core"
 	"meofishes/internal/library"
+	"meofishes/internal/offline"
 )
 
 // TrackList is a scrollable list of track rows. Lists with Reorderable set
@@ -351,6 +352,15 @@ func (u *UI) trackMenuFor(tracks []core.Track, i int, play func([]core.Track, in
 		act(m, tr("Remove from Liked songs"), func() { u.toggleLike(t) })
 	} else {
 		act(m, tr("Add to Liked songs"), func() { u.toggleLike(t) })
+	}
+	switch {
+	case u.core.Offline.Busy(t):
+		a := m.AddAction(tr("Downloading…"))
+		a.SetEnabled(false)
+	case u.core.Offline.Kind(t) == offline.Download:
+		act(m, tr("Remove download"), func() { u.core.Offline.Remove(t); u.toast(tr("Download removed")) })
+	default:
+		act(m, tr("Download"), func() { u.downloadTracks([]core.Track{t}) })
 	}
 	sub := m.AddMenuWithTitle(tr("Add to playlist"))
 	act(sub, tr("New playlist…"), func() { u.newPlaylistDialog([]core.Track{t}) })

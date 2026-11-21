@@ -151,6 +151,16 @@ type Prefs struct {
 	// library & privacy
 	KeepHistory bool `json:"keepHistory"`
 
+	// offline
+	AutoCache    bool   `json:"autoCache"`    // keep songs played in full on disk
+	CacheSongsMB int    `json:"cacheSongsMb"` // size limit of that cache
+	DownloadDir  string `json:"downloadDir,omitempty"`
+
+	// video
+	VideoQuality int  `json:"videoQuality"` // max height (360, 480, 720, 1080)
+	VideoAuto    bool `json:"videoAuto"`    // turn video on by itself when the song has one
+	VideoX11     bool `json:"videoX11"`     // run on X11/XWayland so mpv can draw inside the window
+
 	// tutorial: asked once on the first start, can be replayed in Settings
 	TutorialAsked bool `json:"tutorialAsked"`
 
@@ -178,6 +188,7 @@ func DefaultPrefs() Prefs {
 		ReplayGain: "track", CacheMB: 64, ReadaheadSecs: 30, SeekStepSecs: 10, Autoplay: true, PersistQueue: true,
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
+		AutoCache: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
 	}
 }
 

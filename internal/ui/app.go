@@ -20,6 +20,7 @@ import (
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
 	"meofishes/internal/netlog"
+	"meofishes/internal/offline"
 	"meofishes/internal/player"
 	"meofishes/internal/plugin"
 	"meofishes/internal/theme"
@@ -54,6 +55,8 @@ type UI struct {
 	lyricsSearching bool
 	stream          *plugin.Stream // what is playing (developer mode)
 	streamFrom      string         // original URL before the proxy
+	streamTrack     core.Track
+	videoOn         bool
 	prefetched      map[string]prefetch
 	autoplayOn      bool // a recommendation request is running
 	restorePos      int64
@@ -101,6 +104,7 @@ type UI struct {
 	nowCard    *qt.QWidget
 	tour       *Tour
 	pageFx     *Transition
+	styleTimer *qt.QTimer
 
 	// pages
 	home    *homePage
@@ -128,6 +132,10 @@ func Run(assets fs.FS) int {
 	qt.QCoreApplication_SetApplicationName("meofishes")
 	qt.QCoreApplication_SetApplicationVersion(config.Version)
 	qt.QGuiApplication_SetDesktopFileName("meofishes")
+	// mpv can only draw video inside our window on X11 (XWayland on Wayland)
+	if c.Cfg.Prefs.VideoX11 && os.Getenv("QT_QPA_PLATFORM") == "" && os.Getenv("WAYLAND_DISPLAY") != "" {
+		os.Setenv("QT_QPA_PLATFORM", "xcb")
+	}
 	u.qapp = qt.NewQApplication(os.Args)
 	if i18n.Current().RTL {
 		qt.QGuiApplication_SetLayoutDirection(qt.RightToLeft)
@@ -263,14 +271,23 @@ func (u *UI) setTheme(id string) {
 }
 
 // setStyle changes one "selector|property" of the Settings style layer.
+// The theme is recompiled once the changes stop for a moment (spin boxes and
+// sliders send a change per step).
 func (u *UI) setStyle(key, value string) {
 	if strings.TrimSpace(value) == "" {
 		delete(u.cfg.Style, key)
 	} else {
 		u.cfg.Style[key] = value
 	}
-	_ = u.cfg.Save()
-	u.applyTheme(false)
+	if u.styleTimer == nil {
+		u.styleTimer = qt.NewQTimer()
+		u.styleTimer.SetSingleShot(true)
+		u.styleTimer.OnTimeout(func() {
+			_ = u.cfg.Save()
+			u.applyTheme(false)
+		})
+	}
+	u.styleTimer.Start(220)
 }
 
 func (u *UI) checkThemeFiles() {
@@ -296,9 +313,14 @@ func (u *UI) toast(msg string) {
 
 func (u *UI) mpvOptions() player.Options {
 	pr := u.cfg.Prefs
-	return player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
+	o := player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
 		Normalize: pr.Normalize, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
-		Extra: strings.Fields(pr.ExtraMpvArgs)}
+		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat()}
+	if u.full != nil && u.full.video != nil {
+		o.Wid = u.full.video.WinId()
+		o.X11Video = qt.QGuiApplication_PlatformName() == "xcb"
+	}
+	return o
 }
 
 // startPlayer starts mpv, or the xtm player plugin chosen in Settings.
@@ -598,8 +620,12 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 	pr := u.cfg.Prefs
 	out := *st
 	from := st.URL
+	if out.Page {
+		out.PageURL = out.URL
+	}
 	if out.Page && pr.DirectYtdlp && plugin.YtdlpPath() != "" {
 		if direct, err := plugin.YtdlpStreamURL(ctx, out.URL); err == nil {
+			out.PageURL = out.URL
 			out.URL, out.Page = direct, false
 			from = direct
 		} else {
@@ -622,13 +648,23 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 }
 
 // prepare resolves a track (using the prefetched stream when there is one).
-func (u *UI) prepare(ctx context.Context, t core.Track) (*plugin.Stream, string, error) {
-	if p, ok := u.takePrefetch(t.Key()); ok {
-		return p.st, p.from, nil
+func (u *UI) prepare(ctx context.Context, t core.Track, video bool) (*plugin.Stream, string, error) {
+	if !video {
+		if path, ok := u.core.Offline.Lookup(t); ok {
+			return &plugin.Stream{URL: path, Via: "offline"}, path, nil
+		}
+		if p, ok := u.takePrefetch(t.Key()); ok {
+			return p.st, p.from, nil
+		}
 	}
 	st, err := u.core.Plugins.Resolve(ctx, t)
 	if err != nil {
 		return nil, "", err
+	}
+	if video && st.Page { // mpv opens the page itself, with video
+		out := *st
+		out.PageURL = st.URL
+		return &out, st.URL, nil
 	}
 	l, from := u.localize(ctx, t, st)
 	return l, from, nil
@@ -690,9 +726,16 @@ func (u *UI) playCurrent() {
 	if t == nil {
 		return
 	}
+	u.cacheLeaving()
 	u.gen++
 	gen := u.gen
 	track := *t
+	if u.cfg.Prefs.VideoAuto && track.VideoID != "" && u.mpv != nil && !u.videoOn {
+		u.videoOn = true
+		_ = u.mpv.SetVideo(true, u.videoFormat())
+		u.full.syncVideo()
+	}
+	video := u.videoOn
 	u.showNowPlaying(track)
 	u.stream = nil
 	u.lyricsSearching = true
@@ -705,7 +748,7 @@ func (u *UI) playCurrent() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		t0 := time.Now()
-		st, from, err := u.prepare(ctx, track)
+		st, from, err := u.prepare(ctx, track, video)
 		mainthread.Start(func() {
 			if gen != u.gen {
 				return
@@ -723,7 +766,7 @@ func (u *UI) playCurrent() {
 				u.toast(err.Error())
 				return
 			}
-			u.stream, u.streamFrom = st, from
+			u.stream, u.streamFrom, u.streamTrack = st, from, track
 			if u.full.open {
 				u.full.syncRight()
 			}
@@ -1130,4 +1173,123 @@ func plural(n int, one, many string) string {
 		return tr(one, "n", "1")
 	}
 	return tr(many, "n", fmt.Sprint(n))
+}
+
+// ---------------------------------------------------------------- offline
+
+// cacheLeaving keeps the song being left in the offline cache when it was
+// downloaded in full by the chunk proxy (no extra download).
+func (u *UI) cacheLeaving() {
+	st, t := u.stream, u.streamTrack
+	if st == nil || !u.cfg.Prefs.AutoCache || u.core.Proxy == nil || t.Title == "" || u.core.Offline.Kind(t) != "" {
+		return
+	}
+	data, ctype, src, ok := u.core.Proxy.Complete(st.URL)
+	if !ok {
+		return
+	}
+	go func() {
+		if _, err := u.core.Offline.Save(t, data, offline.ExtFor(ctype, src), offline.Cache); err != nil {
+			u.core.Log("offline", "cache %s: %v", t.String(), err)
+		}
+	}()
+}
+
+// downloadTracks saves songs on disk to play them without internet.
+func (u *UI) downloadTracks(ts []core.Track) {
+	var todo []core.Track
+	for _, t := range ts {
+		if u.core.Offline.Kind(t) != offline.Download && !u.core.Offline.Busy(t) {
+			todo = append(todo, t)
+		}
+	}
+	if len(todo) == 0 {
+		u.toast(tr("Already downloaded"))
+		return
+	}
+	u.toast(plural(len(todo), "Downloading {n} song…", "Downloading {n} songs…"))
+	go func() {
+		ok, failed := 0, 0
+		for _, t := range todo {
+			if err := u.downloadOne(t); err != nil {
+				failed++
+				u.core.Log("offline", "download %s: %v", t.String(), err)
+			} else {
+				ok++
+			}
+		}
+		mainthread.Start(func() {
+			if failed > 0 {
+				u.toast(tr("Downloaded {ok}, failed {failed}", "ok", itoa(ok), "failed", itoa(failed)))
+			} else {
+				u.toast(plural(ok, "{n} song downloaded", "{n} songs downloaded"))
+			}
+			if u.lib != nil && u.curPage == "playlist" {
+				u.lib.fillDetail()
+			}
+		})
+	}()
+}
+
+func (u *UI) downloadOne(t core.Track) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	// the song playing now may already be complete in the proxy
+	st := mainthread.Wait2(func() *plugin.Stream {
+		if u.stream != nil && u.streamTrack.Key() == t.Key() {
+			return u.stream
+		}
+		return nil
+	})
+	if st != nil && u.core.Proxy != nil {
+		if data, ctype, src, ok := u.core.Proxy.Complete(st.URL); ok {
+			_, err := u.core.Offline.Save(t, data, offline.ExtFor(ctype, src), offline.Download)
+			return err
+		}
+	}
+	rs, err := u.core.Plugins.Resolve(ctx, t)
+	if err != nil {
+		return err
+	}
+	url := rs.URL
+	if rs.Page {
+		if url, err = plugin.YtdlpStreamURL(ctx, rs.URL); err != nil {
+			return err
+		}
+	}
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return fmt.Errorf("not a downloadable URL: %s", url)
+	}
+	_, err = u.core.Offline.Fetch(ctx, t, url, rs.Headers, offline.Download, nil)
+	return err
+}
+
+// ---------------------------------------------------------------- video
+
+func (u *UI) videoFormat() string {
+	h := u.cfg.Prefs.VideoQuality
+	if h <= 0 {
+		h = 720
+	}
+	return fmt.Sprintf("bestvideo[height<=?%d]+bestaudio/best[height<=?%d]/best", h, h)
+}
+
+// setVideo turns the video of the current song on or off. Turning it on
+// reloads the song as video at the same position.
+func (u *UI) setVideo(on bool) {
+	if u.mpv == nil {
+		u.toast(tr("Video needs mpv as the player"))
+		return
+	}
+	if on && u.full.video.WinId() == 0 {
+		u.toast(tr("Video is not available on this system"))
+		return
+	}
+	u.videoOn = on
+	_ = u.mpv.SetVideo(on, u.videoFormat())
+	u.full.syncVideo()
+	if cur := u.current(); cur != nil && !u.state().Idle {
+		u.restorePos = u.state().PositionMs
+		u.playCurrent()
+	}
 }

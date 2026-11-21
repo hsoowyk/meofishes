@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"meofishes/internal/core"
@@ -92,6 +93,7 @@ func (p *process) start() error {
 	cmd.Dir = p.dir
 	cmd.Env = append(os.Environ(), "MEOFISHES_PLUGIN="+p.m.ID, "MEOFISHES_VERSION="+p.host.Version)
 	cmd.Env = append(cmd.Env, p.env...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM} // dies with meofishes
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err

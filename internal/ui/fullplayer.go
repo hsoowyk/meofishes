@@ -20,6 +20,8 @@ type FullPlayer struct {
 	right  *qt.QStackedWidget
 	lyrics *LyricsView
 	viz    *Visualizer
+	video  *qt.QWidget // native window mpv draws video into
+	vidBtn *IconButton
 	status *qt.QLabel
 	vizFor string // stream URL the visualizer analyzes
 	open   bool
@@ -39,6 +41,9 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	down.OnClicked(u.closeFull)
 	top.AddWidget(down.QWidget)
 	top.AddStretch()
+	f.vidBtn = u.iconButton("FullVideo", "video", tr("Show the video (when the song has one)"))
+	f.vidBtn.OnClicked(func() { u.setVideo(!u.videoOn) })
+	top.AddWidget(f.vidBtn.QWidget)
 	fs := u.iconButton("FullWindow", "fullscreen", tr("Fullscreen window (F11)"))
 	fs.OnClicked(func() {
 		if u.win.IsFullScreen() {
@@ -99,6 +104,15 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	f.viz = u.visualizer("FullVisualizer")
 	f.right.AddWidget(f.lyrics.QWidget)
 	f.right.AddWidget(f.viz.QWidget)
+	// video: a native child window (only this widget, not its parents)
+	f.video = qt.NewQWidget2()
+	f.video.SetObjectName("FullVideo")
+	f.video.SetAttribute(qt.WA_DontCreateNativeAncestors)
+	f.video.SetAttribute(qt.WA_NativeWindow)
+	f.video.SetAttribute(qt.WA_StyledBackground)
+	f.video.SetMinimumSize2(320, 180)
+	f.right.AddWidget(f.video)
+	_ = f.video.WinId() // create the native window now: mpv gets its id at start
 	rb.AddWidget2(f.right.QWidget, 1)
 	row := qt.NewQHBoxLayout2()
 	f.status = label("", "FullLyricsStatus", "hint")
@@ -186,8 +200,19 @@ func (f *FullPlayer) lyricsChanged(l *core.Lyrics) {
 	f.syncRight()
 }
 
+// syncVideo shows the video area while video is on.
+func (f *FullPlayer) syncVideo() {
+	f.vidBtn.SetActive(f.u.videoOn)
+	f.syncRight()
+}
+
 func (f *FullPlayer) syncRight() {
 	u := f.u
+	if u.videoOn {
+		f.right.SetCurrentWidget(f.video)
+		f.viz.SetRunning(false)
+		return
+	}
 	noLyrics := u.lyrics == nil && !u.lyricsSearching
 	if !noLyrics {
 		f.right.SetCurrentIndex(0)

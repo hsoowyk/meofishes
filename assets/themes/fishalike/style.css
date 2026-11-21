@@ -427,6 +427,7 @@ QLabel[role="chip"] {
   -meo-icon-size: 22px;
 }
 #FullLyricsStatus { color: var(--text-faint); font-size: 11px; }
+#FullVideo { background: #000000; border-radius: 12px; }
 
 /* ---------------------------------------------------------------- lyrics */
 

@@ -67,6 +67,7 @@ func (u *UI) coverView(name string, square bool) *CoverView {
 		})
 	}
 	u.style.Watch(c, func() { u.applyShadow(c.QWidget, "CoverView"); c.Update() })
+	c.OnDestroyed(c.dispose)
 	return c
 }
 

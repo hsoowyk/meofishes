@@ -556,3 +556,30 @@ func (p *Proxy) Stats() []Stat {
 	}
 	return out
 }
+
+// Complete returns the whole file of a registered URL when every part has
+// been downloaded (used to keep played songs in the offline cache).
+func (p *Proxy) Complete(local string) (data []byte, ctype, source string, ok bool) {
+	e := p.lookup(local)
+	if e == nil {
+		return nil, "", "", false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.passthru || e.size <= 0 {
+		return nil, "", "", false
+	}
+	n := p.nChunks(e)
+	if int64(len(e.chunks)) < n {
+		return nil, "", "", false
+	}
+	buf := make([]byte, 0, e.size)
+	for i := int64(0); i < n; i++ {
+		c := e.chunks[i]
+		if c == nil {
+			return nil, "", "", false
+		}
+		buf = append(buf, c...)
+	}
+	return buf, e.ctype, e.url, true
+}
