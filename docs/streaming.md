@@ -74,3 +74,11 @@ mpv draws the video inside the window through a native child window
 (`--wid`). That only works on X11, so on Wayland meofishes runs through
 XWayland (Settings → Playback → Run on X11 for video, on by default; set
 `QT_QPA_PLATFORM` yourself to override).
+
+## YouTube asks to sign in
+
+Sometimes YouTube answers "Sign in to confirm you're not a bot" for every
+song from your connection. meofishes then tells you so instead of waiting.
+Choose your browser in **Settings → Playback → YouTube account** (or give a
+`cookies.txt`): yt-dlp and mpv then use the YouTube account you are signed in
+to in that browser, the way yt-dlp documents (`--cookies-from-browser`).

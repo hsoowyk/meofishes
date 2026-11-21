@@ -53,6 +53,7 @@ type Options struct {
 	// Wid is the native window video is drawn into (0 = no video support).
 	// Video stays off (vid=no) until SetVideo turns it on.
 	AudioFmt string    // yt-dlp format for audio (quality setting)
+	YtdlRaw  string    // --ytdl-raw-options (cookies for YouTube)
 	EQ       []float64 // equalizer gains (dB) for EQBands; nil = off
 	Speed    float64   // playback speed (1 = normal; pitch is kept)
 	Wid      uintptr
@@ -132,6 +133,9 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	}
 	if af := Filters(opt.Normalize, opt.EQ); af != "" {
 		args = append(args, "--af="+af)
+	}
+	if opt.YtdlRaw != "" {
+		args = append(args, "--ytdl-raw-options="+opt.YtdlRaw)
 	}
 	if opt.Speed > 0 && opt.Speed != 1 {
 		args = append(args, fmt.Sprintf("--speed=%g", opt.Speed))

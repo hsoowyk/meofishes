@@ -539,6 +539,32 @@ func (sp *settingsPage) playback(s *sb) {
 	s.toggle(tr("Resume playing on start"), "", u.cfg.Prefs.ResumeOnStart, func(on bool) { u.cfg.Prefs.ResumeOnStart = on })
 	s.number(tr("Seek step"), tr("Shift+← / Shift+→"), 1, 60, u.cfg.Prefs.SeekStepSecs, "s", func(v int) { u.cfg.Prefs.SeekStepSecs = v })
 
+	s.section(tr("YouTube account"))
+	s.note(tr("When YouTube says “sign in to confirm you’re not a bot”, yt-dlp can use the account you are signed in to in your browser. Nothing is sent anywhere else."))
+	s.choice(tr("Use the account of"), "", [][2]string{{"", tr("No account")}, {"firefox", "Firefox"}, {"librewolf", "LibreWolf"}, {"chrome", "Chrome"},
+		{"chromium", "Chromium"}, {"brave", "Brave"}, {"vivaldi", "Vivaldi"}, {"opera", "Opera"}, {"edge", "Edge"}},
+		u.cfg.Prefs.YtCookies, func(v string) {
+			u.cfg.Prefs.YtCookies = v
+			u.core.ApplyQuality()
+			u.prefetched = map[string]prefetch{}
+			u.restartPlayer()
+		})
+	cookieFile := ""
+	if strings.HasPrefix(u.cfg.Prefs.YtCookies, "file:") {
+		cookieFile = strings.TrimPrefix(u.cfg.Prefs.YtCookies, "file:")
+	}
+	s.text(tr("Or a cookies.txt file"), tr("Exported from your browser (Netscape format)."), cookieFile, "/path/cookies.txt", func(v string) {
+		if v == "" {
+			if strings.HasPrefix(u.cfg.Prefs.YtCookies, "file:") {
+				u.cfg.Prefs.YtCookies = ""
+			}
+		} else {
+			u.cfg.Prefs.YtCookies = "file:" + v
+		}
+		u.core.ApplyQuality()
+		u.prefetched = map[string]prefetch{}
+	})
+
 	s.section(tr("Audio"))
 	s.choice(tr("Maximum quality"), tr("The best a source may send. Lossless sources stay lossless on Max; lower levels save data."),
 		[][2]string{{"max", tr("Max (lossless when available)")}, {"high", tr("High (~192 kbps)")}, {"normal", tr("Normal (~128 kbps)")}, {"low", tr("Data saver (~64 kbps)")}},

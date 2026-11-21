@@ -604,6 +604,13 @@
   "{n} play": "{n}-mal gespielt",
   "{n} plays": "{n}-mal gespielt",
   "{n} song imported": "{n} Song importiert",
-  "{n} songs imported": "{n} Songs importiert"
+  "{n} songs imported": "{n} Songs importiert",
+  "Exported from your browser (Netscape format).": "Aus deinem Browser exportiert (Netscape-Format).",
+  "No account": "Kein Konto",
+  "Or a cookies.txt file": "Oder eine cookies.txt-Datei",
+  "Use the account of": "Konto verwenden von",
+  "When YouTube says “sign in to confirm you’re not a bot”, yt-dlp can use the account you are signed in to in your browser. Nothing is sent anywhere else.": "Wenn YouTube „Melde dich an, um zu bestätigen, dass du kein Bot bist“ sagt, kann yt-dlp das Konto nutzen, mit dem du im Browser angemeldet bist. Nichts wird anderswohin gesendet.",
+  "YouTube account": "YouTube-Konto",
+  "YouTube is asking to sign in. Choose your browser in Settings → Playback → YouTube account.": "YouTube verlangt eine Anmeldung. Wähle deinen Browser unter Einstellungen → Wiedergabe → YouTube-Konto."
  }
 }

@@ -246,8 +246,10 @@ func (c *Core) proxyOptions() stream.Options {
 		UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 }
 
-// ApplyQuality sets the audio quality used by yt-dlp and given to plugins.
+// ApplyQuality sets the audio quality used by yt-dlp and given to plugins,
+// and the YouTube account yt-dlp uses.
 func (c *Core) ApplyQuality() {
+	plugin.YtdlpArgs, _ = plugin.CookieArgs(c.Cfg.Prefs.YtCookies)
 	plugin.AudioFormat = plugin.QualityFormat(c.Cfg.Prefs.AudioQuality)
 	if c.Host != nil {
 		c.Host.Quality = c.Cfg.Prefs.AudioQuality

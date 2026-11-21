@@ -14,7 +14,7 @@ func TestStartRealMpv(t *testing.T) {
 	}
 	for _, opt := range []Options{
 		{},
-		{Wid: 12345, X11Video: true, Normalize: true, AudioFmt: "bestaudio/best", EQ: EQPresets["rock"], Speed: 1.25},
+		{Wid: 12345, X11Video: true, Normalize: true, AudioFmt: "bestaudio/best", EQ: EQPresets["rock"], Speed: 1.25, YtdlRaw: "cookies-from-browser=firefox"},
 	} {
 		m, err := Start(t.TempDir(), opt, Events{})
 		if err != nil {

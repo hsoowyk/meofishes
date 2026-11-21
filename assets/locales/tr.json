@@ -604,6 +604,13 @@
   "{n} play": "{n} kez",
   "{n} plays": "{n} kez",
   "{n} song imported": "{n} şarkı içe aktarıldı",
-  "{n} songs imported": "{n} şarkı içe aktarıldı"
+  "{n} songs imported": "{n} şarkı içe aktarıldı",
+  "Exported from your browser (Netscape format).": "Tarayıcından dışa aktarılmış (Netscape biçimi).",
+  "No account": "Hesap yok",
+  "Or a cookies.txt file": "Ya da bir cookies.txt dosyası",
+  "Use the account of": "Şunun hesabını kullan",
+  "When YouTube says “sign in to confirm you’re not a bot”, yt-dlp can use the account you are signed in to in your browser. Nothing is sent anywhere else.": "YouTube “bot olmadığını doğrulamak için oturum aç” dediğinde yt-dlp, tarayıcında oturum açtığın hesabı kullanabilir. Hiçbir şey başka yere gönderilmez.",
+  "YouTube account": "YouTube hesabı",
+  "YouTube is asking to sign in. Choose your browser in Settings → Playback → YouTube account.": "YouTube oturum açmanı istiyor. Ayarlar → Çalma → YouTube hesabı bölümünden tarayıcını seç."
  }
 }

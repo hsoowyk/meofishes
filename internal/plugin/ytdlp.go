@@ -22,6 +22,31 @@ func YtdlpPath() string {
 	return ""
 }
 
+// YtdlpArgs are extra arguments for every yt-dlp call (Settings → Playback
+// → YouTube account: --cookies-from-browser / --cookies).
+var YtdlpArgs []string
+
+// CookieArgs turns the setting into yt-dlp arguments: a browser name
+// (firefox, chrome, chromium, brave, edge, opera, vivaldi, librewolf…) or
+// "file:/path/cookies.txt". The second value is for mpv's --ytdl-raw-options.
+func CookieArgs(setting string) (ytdlp []string, mpvRaw string) {
+	setting = strings.TrimSpace(setting)
+	switch {
+	case setting == "":
+		return nil, ""
+	case strings.HasPrefix(setting, "file:"):
+		p := strings.TrimPrefix(setting, "file:")
+		return []string{"--cookies", p}, "cookies=" + p
+	}
+	return []string{"--cookies-from-browser", setting}, "cookies-from-browser=" + setting
+}
+
+// IsBotCheck reports whether YouTube refused yt-dlp until the user signs in
+// ("Sign in to confirm you're not a bot").
+func IsBotCheck(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "confirm you") || strings.Contains(err.Error(), "not a bot"))
+}
+
 func runYtdlp(ctx context.Context, args ...string) ([]byte, error) {
 	bin := YtdlpPath()
 	if bin == "" {
@@ -29,7 +54,8 @@ func runYtdlp(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, append([]string{"--no-warnings", "--ignore-config"}, args...)...)
+	all := append(append([]string{"--no-warnings", "--ignore-config"}, YtdlpArgs...), args...)
+	cmd := exec.CommandContext(ctx, bin, all...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

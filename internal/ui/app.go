@@ -3,6 +3,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -357,6 +358,7 @@ func (u *UI) mpvOptions() player.Options {
 	o := player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
 		Normalize: pr.Normalize, EQ: u.eqGains(), Speed: pr.Speed, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
 		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat(), AudioFmt: plugin.QualityFormat(pr.AudioQuality)}
+	_, o.YtdlRaw = plugin.CookieArgs(pr.YtCookies)
 	if u.full != nil && u.full.video != nil {
 		o.Wid = u.full.video.WinId()
 		o.X11Video = qt.QGuiApplication_PlatformName() == "xcb"
@@ -666,7 +668,7 @@ func (u *UI) emitEnd() {
 // localize turns a resolved stream into what the player opens: web pages are
 // resolved with yt-dlp (so the audio URL can be chunked), and HTTP files go
 // through the chunked download proxy.
-func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*plugin.Stream, string) {
+func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*plugin.Stream, string, error) {
 	pr := u.cfg.Prefs
 	out := *st
 	from := st.URL
@@ -678,6 +680,9 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 			out.PageURL = out.URL
 			out.URL, out.Page = direct, false
 			from = direct
+		} else if plugin.IsBotCheck(err) && u.cfg.Prefs.YtCookies == "" {
+			// mpv would hit the same wall: say what to do instead of waiting
+			return nil, "", errYouTubeSignIn
 		} else {
 			u.core.Log("stream", "yt-dlp: %v (mpv will open the page)", err)
 		}
@@ -694,8 +699,10 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 		out.URL = u.core.Proxy.Register(out.URL, out.Headers)
 		out.Headers = nil
 	}
-	return &out, from
+	return &out, from, nil
 }
+
+var errYouTubeSignIn = errors.New("YouTube asks to sign in")
 
 // prepare resolves a track (using the prefetched stream when there is one).
 func (u *UI) prepare(ctx context.Context, t core.Track, video bool) (*plugin.Stream, string, error) {
@@ -716,8 +723,7 @@ func (u *UI) prepare(ctx context.Context, t core.Track, video bool) (*plugin.Str
 		out.PageURL = st.URL
 		return &out, st.URL, nil
 	}
-	l, from := u.localize(ctx, t, st)
-	return l, from, nil
+	return u.localize(ctx, t, st)
 }
 
 // takePrefetch is called from worker goroutines too: hop through the UI thread.
@@ -758,7 +764,10 @@ func (u *UI) prefetchNext(gen int) {
 			u.core.Log("prefetch", "%s: %v", next.String(), err)
 			return
 		}
-		l, from := u.localize(ctx, next, st)
+		l, from, err := u.localize(ctx, next, st)
+		if err != nil {
+			return
+		}
 		if u.core.Proxy != nil && strings.Contains(l.URL, "127.0.0.1") {
 			u.core.Proxy.Prefetch(l.URL)
 		}
@@ -804,6 +813,11 @@ func (u *UI) playCurrent() {
 		st, from, err := u.prepare(ctx, track, video)
 		mainthread.Start(func() {
 			if gen != u.gen {
+				return
+			}
+			if errors.Is(err, errYouTubeSignIn) {
+				u.toast(tr("YouTube is asking to sign in. Choose your browser in Settings → Playback → YouTube account."))
+				u.core.Log("player", "%s: YouTube bot check — set a YouTube account in Settings", track.String())
 				return
 			}
 			if err != nil {

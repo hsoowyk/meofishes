@@ -166,6 +166,10 @@ type Prefs struct {
 	MPRIS  bool `json:"mpris"`  // media keys, desktop media widget, playerctl
 	Notify bool `json:"notify"` // a notification when a song starts
 
+	// YtCookies lets yt-dlp sign in to YouTube as you: a browser name
+	// (firefox, chrome…) or "file:/path/cookies.txt"; "" = no account.
+	YtCookies string `json:"ytCookies,omitempty"`
+
 	// AudioQuality is the maximum quality: max | high | normal | low.
 	AudioQuality string `json:"audioQuality"`
 
