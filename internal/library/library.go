@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -74,8 +75,10 @@ type HistoryItem struct {
 type Library struct {
 	path      string
 	mu        sync.Mutex
-	Playlists []*Playlist   `json:"playlists"`
-	History   []HistoryItem `json:"history,omitempty"`
+	Playlists []*Playlist          `json:"playlists"`
+	History   []HistoryItem        `json:"history,omitempty"`
+	Stats     map[string]*PlayStat `json:"stats,omitempty"`
+	Searches  []string             `json:"searches,omitempty"`
 	// KeepHistory=false pauses the history (privacy setting).
 	KeepHistory bool `json:"-"`
 	listeners   []func()
@@ -352,6 +355,133 @@ func (l *Library) Recent(n int) []core.Track {
 func (l *Library) ClearHistory() {
 	l.mu.Lock()
 	l.History = nil
+	l.Stats = nil
+	l.Searches = nil
 	l.mu.Unlock()
 	l.changed()
+}
+
+// ---------------------------------------------------------------- statistics
+
+// PlayStat counts how much a song was listened to.
+type PlayStat struct {
+	Track core.Track `json:"track"`
+	Plays int        `json:"plays"`
+	Ms    int64      `json:"ms"`
+	Last  time.Time  `json:"last"`
+}
+
+// RecordListen adds listening time to a song; it counts as a play after
+// 30 seconds or half of the song.
+func (l *Library) RecordListen(t core.Track, listenedMs int64) {
+	if !l.KeepHistory || listenedMs < 5000 || t.Title == "" {
+		return
+	}
+	l.mu.Lock()
+	if l.Stats == nil {
+		l.Stats = map[string]*PlayStat{}
+	}
+	st := l.Stats[t.Key()]
+	if st == nil {
+		st = &PlayStat{}
+		l.Stats[t.Key()] = st
+	}
+	st.Track = t
+	st.Ms += listenedMs
+	if listenedMs >= 30000 || (t.DurationMs > 0 && listenedMs*2 >= t.DurationMs) {
+		st.Plays++
+	}
+	st.Last = time.Now()
+	l.mu.Unlock()
+	_ = l.save()
+}
+
+// Ranked is one row of a top list.
+type Ranked struct {
+	Name  string
+	Track *core.Track // nil for artists
+	Plays int
+	Ms    int64
+}
+
+// Top returns the most played songs and artists since a time (zero = ever),
+// and the total listening time.
+func (l *Library) Top(since time.Time, n int) (songs, artists []Ranked, total time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	byArtist := map[string]*Ranked{}
+	for _, st := range l.Stats {
+		if !since.IsZero() && st.Last.Before(since) {
+			continue
+		}
+		t := st.Track
+		total += time.Duration(st.Ms) * time.Millisecond
+		songs = append(songs, Ranked{Name: t.String(), Track: &t, Plays: st.Plays, Ms: st.Ms})
+		a := strings.TrimSpace(t.Artist)
+		if a == "" {
+			continue
+		}
+		r := byArtist[strings.ToLower(a)]
+		if r == nil {
+			r = &Ranked{Name: a}
+			byArtist[strings.ToLower(a)] = r
+		}
+		r.Plays += st.Plays
+		r.Ms += st.Ms
+	}
+	for _, r := range byArtist {
+		artists = append(artists, *r)
+	}
+	less := func(s []Ranked) func(i, j int) bool {
+		return func(i, j int) bool {
+			if s[i].Plays != s[j].Plays {
+				return s[i].Plays > s[j].Plays
+			}
+			return s[i].Ms > s[j].Ms
+		}
+	}
+	sort.Slice(songs, less(songs))
+	sort.Slice(artists, less(artists))
+	if len(songs) > n {
+		songs = songs[:n]
+	}
+	if len(artists) > n {
+		artists = artists[:n]
+	}
+	return
+}
+
+// ---------------------------------------------------------------- searches
+
+// AddSearch remembers a query (the last 20, newest first).
+func (l *Library) AddSearch(q string) {
+	q = strings.TrimSpace(q)
+	if q == "" || !l.KeepHistory {
+		return
+	}
+	l.mu.Lock()
+	out := []string{q}
+	for _, s := range l.Searches {
+		if !strings.EqualFold(s, q) && len(out) < 20 {
+			out = append(out, s)
+		}
+	}
+	l.Searches = out
+	l.mu.Unlock()
+	_ = l.save()
+}
+
+// RecentSearches returns the remembered queries.
+func (l *Library) RecentSearches() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.Searches...)
+}
+
+// ClearSearches forgets the queries.
+func (l *Library) ClearSearches() {
+	l.mu.Lock()
+	l.Searches = nil
+	l.mu.Unlock()
+	_ = l.save()
 }

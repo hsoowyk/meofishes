@@ -32,12 +32,14 @@ type CoverLoader struct {
 	order   []string
 	targets map[*CoverView]string
 	waiting map[string][]func(*qt.QPixmap)
+	sem     chan struct{} // limits parallel decoding (2 cores…)
 }
 
 func newCoverLoader(dir string, ua func() string) *CoverLoader {
 	_ = os.MkdirAll(dir, 0o755)
 	return &CoverLoader{dir: dir, ua: ua, client: &http.Client{Timeout: 20 * time.Second},
-		loading: map[string]bool{}, pix: map[string]*qt.QPixmap{}, targets: map[*CoverView]string{}, waiting: map[string][]func(*qt.QPixmap){}}
+		loading: map[string]bool{}, pix: map[string]*qt.QPixmap{}, targets: map[*CoverView]string{}, waiting: map[string][]func(*qt.QPixmap){},
+		sem: make(chan struct{}, 2)}
 }
 
 func (l *CoverLoader) path(url string) string {
@@ -77,21 +79,34 @@ func (l *CoverLoader) Get(url string, f func(*qt.QPixmap)) {
 		return
 	}
 	go func() {
+		// download AND decode here: decoding a JPEG on the UI thread makes
+		// lists stutter while their covers arrive (QImage is fine off it)
 		data := l.fetch(url)
+		var img *qt.QImage
+		if len(data) > 0 {
+			l.sem <- struct{}{}
+			img = qt.NewQImage()
+			if !img.LoadFromDataWithData(data) || img.IsNull() {
+				img.Delete()
+				img = nil
+			} else if img.Width() > 640 || img.Height() > 640 {
+				small := qt.NewQImage9(img.Scaled3(640, 640, qt.KeepAspectRatio, qt.SmoothTransformation))
+				img.Delete()
+				img = small
+			}
+			<-l.sem
+		}
 		mainthread.Start(func() {
 			l.mu.Lock()
 			delete(l.loading, url)
 			l.mu.Unlock()
 			var px *qt.QPixmap
-			if len(data) > 0 {
-				px = qt.NewQPixmap()
-				if !px.LoadFromDataWithData(data) || px.IsNull() {
+			if img != nil {
+				px = qt.NewQPixmap5(qt.QPixmap_FromImage(img))
+				img.Delete()
+				if px.IsNull() {
 					px.Delete()
 					px = nil
-				} else if px.Width() > 640 {
-					small := px.Scaled3(640, 640, qt.KeepAspectRatio, qt.SmoothTransformation)
-					px.Delete()
-					px = qt.NewQPixmap5(small)
 				}
 			}
 			if px != nil {

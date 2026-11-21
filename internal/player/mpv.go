@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"meofishes/internal/sysproc"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -52,7 +52,9 @@ type Options struct {
 	Extra         []string // extra mpv arguments
 	// Wid is the native window video is drawn into (0 = no video support).
 	// Video stays off (vid=no) until SetVideo turns it on.
-	AudioFmt string // yt-dlp format for audio (quality setting)
+	AudioFmt string    // yt-dlp format for audio (quality setting)
+	EQ       []float64 // equalizer gains (dB) for EQBands; nil = off
+	Speed    float64   // playback speed (1 = normal; pitch is kept)
 	Wid      uintptr
 	X11Video bool   // the app runs on X11/XWayland: use an X11 GPU context
 	VideoFmt string // yt-dlp format used while video is on
@@ -98,10 +100,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	if err != nil {
 		return nil, errors.New("mpv not found: install it (e.g. xbps-install mpv)")
 	}
-	if runtimeDir == "" {
-		runtimeDir = os.TempDir()
-	}
-	sock := filepath.Join(runtimeDir, fmt.Sprintf("meofishes-mpv-%d.sock", os.Getpid()))
+	sock := sysproc.MpvSocket(runtimeDir, os.Getpid())
 	_ = os.Remove(sock)
 	if opt.CacheMB <= 0 {
 		opt.CacheMB = 64
@@ -131,8 +130,11 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 			args = append(args, "--gpu-context=x11egl")
 		}
 	}
-	if opt.Normalize {
-		args = append(args, "--af=lavfi=[dynaudnorm=f=250:g=15]")
+	if af := Filters(opt.Normalize, opt.EQ); af != "" {
+		args = append(args, "--af="+af)
+	}
+	if opt.Speed > 0 && opt.Speed != 1 {
+		args = append(args, fmt.Sprintf("--speed=%g", opt.Speed))
 	}
 	if opt.Device != "" {
 		args = append(args, "--audio-device="+opt.Device)
@@ -143,7 +145,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	args = append(args, opt.Extra...)
 	cmd := exec.Command(bin, args...)
 	// mpv dies with meofishes, even if meofishes crashes
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	sysproc.Child(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -152,7 +154,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	m.st.Idle = true
 	var conn net.Conn
 	for i := 0; i < 100; i++ {
-		conn, err = net.Dial("unix", sock)
+		conn, err = dialIPC(sock)
 		if err == nil {
 			break
 		}
@@ -304,6 +306,56 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// EQBands are the equalizer frequencies (Hz).
+var EQBands = []int{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
+
+// EQPresets are named equalizer curves (dB per band).
+var EQPresets = map[string][]float64{
+	"flat":       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	"bass":       {6, 5, 4, 2, 0, 0, 0, 0, 0, 0},
+	"treble":     {0, 0, 0, 0, 0, 1, 2, 4, 5, 6},
+	"vocal":      {-2, -2, -1, 1, 3, 4, 3, 1, 0, -1},
+	"rock":       {4, 3, 2, 0, -1, -1, 1, 3, 4, 4},
+	"pop":        {-1, 0, 2, 3, 4, 3, 1, 0, -1, -1},
+	"electronic": {5, 4, 1, 0, -2, 1, 0, 2, 4, 5},
+	"acoustic":   {3, 3, 2, 1, 1, 1, 2, 3, 2, 1},
+	"loudness":   {5, 4, 2, 0, -1, 0, 0, 2, 4, 5},
+}
+
+// Filters builds mpv's audio filter chain: loudness normalization and a
+// 10-band equalizer (with a pre-amp so boosts do not clip).
+func Filters(normalize bool, eq []float64) string {
+	var parts []string
+	if normalize {
+		parts = append(parts, "lavfi=[dynaudnorm=f=250:g=15]")
+	}
+	if len(eq) == len(EQBands) {
+		var bands []string
+		peak := 0.0
+		for i, g := range eq {
+			if g > peak {
+				peak = g
+			}
+			if g != 0 {
+				bands = append(bands, fmt.Sprintf("equalizer=f=%d:t=o:w=1:g=%g", EQBands[i], g))
+			}
+		}
+		if len(bands) > 0 {
+			if peak > 0 {
+				bands = append([]string{fmt.Sprintf("volume=volume=%gdB", -peak)}, bands...)
+			}
+			parts = append(parts, "lavfi=["+strings.Join(bands, ",")+"]")
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+// SetFilters replaces the audio filter chain while playing.
+func (m *MPV) SetFilters(af string) error { return m.command("set_property", "af", af) }
+
+// SetSpeed changes the playback speed (pitch is kept).
+func (m *MPV) SetSpeed(s float64) error { return m.command("set_property", "speed", s) }
 
 // SetVideo turns video on (in the window given to Start) or off. format is
 // the yt-dlp format for web pages while video is on.

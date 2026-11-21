@@ -1,0 +1,19 @@
+/* Moss: forest greens with an amber highlight. */
+:root {
+  --wine-0: #090f0b;
+  --wine-1: #0d1510;
+  --wine-2: #132018;
+  --wine-3: #1a2a1f;
+  --wine-4: #233728;
+  --red: #7fb069;
+  --red-soft: #6c9a58;
+  --red-deep: #4c7040;
+  --pink-light: #e6c46a;
+  --pink: #c9a94f;
+  --pink-dark: #8c7a2e;
+  --text: #eef3e8;
+  --text-dim: #b4c4ab;
+  --text-faint: #75876c;
+}
+#CurrentLyric { -meo-swipe: fade; }
+#FullLyrics { -meo-word-animation: fade; -meo-glow-color: alpha(#e6c46a, .5); }

@@ -63,6 +63,11 @@ func (u *UI) buildTray() {
 	add(tr("Play / pause"), u.TogglePlay)
 	add(tr("Next"), func() { u.Next(true) })
 	add(tr("Previous"), u.Prev)
+	sm := m.AddMenuWithTitle(tr("Sleep timer"))
+	sm.OnAboutToShow(func() {
+		sm.Clear()
+		u.sleepMenu(sm)
+	})
 	m.AddSeparator()
 	add(tr("Show / hide meofishes"), u.toggleWindow)
 	add(tr("Quit"), u.quit)

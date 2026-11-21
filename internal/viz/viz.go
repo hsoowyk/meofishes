@@ -11,9 +11,10 @@ import (
 	"io"
 	"math"
 	"math/cmplx"
+	"meofishes/internal/sysproc"
 	"os/exec"
+	"runtime"
 	"sync"
-	"syscall"
 )
 
 const (
@@ -63,7 +64,7 @@ func Analyze(ctx context.Context, url string, headers map[string]string, bands i
 
 func (s *Spectrum) run(ctx context.Context, url string, headers map[string]string) error {
 	args := []string{"--no-config", "--really-quiet", "--no-video", "--untimed", "--ao=pcm",
-		"--ao-pcm-file=/dev/stdout", "--ao-pcm-waveheader=no", "--audio-format=s16",
+		"--ao-pcm-file=" + stdoutPath(), "--ao-pcm-waveheader=no", "--audio-format=s16",
 		"--audio-channels=mono", "--audio-samplerate=11025", "--ytdl-format=bestaudio/best"}
 	if len(headers) > 0 {
 		hs := ""
@@ -76,7 +77,7 @@ func (s *Spectrum) run(ctx context.Context, url string, headers map[string]strin
 		args = append(args, "--http-header-fields="+hs)
 	}
 	cmd := exec.CommandContext(ctx, "mpv", append(args, url)...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL} // dies with meofishes
+	sysproc.Child(cmd) // dies with meofishes
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -180,3 +181,14 @@ func fft(a []complex128) {
 		}
 	}
 }
+
+// stdoutPath is where mpv writes the decoded audio (our pipe).
+func stdoutPath() string {
+	if runtime.GOOS == "windows" {
+		return "CONOUT$" // not a pipe on Windows: see Supported
+	}
+	return "/dev/stdout"
+}
+
+// Supported reports whether the visualizer can decode on this system.
+func Supported() bool { return runtime.GOOS != "windows" }

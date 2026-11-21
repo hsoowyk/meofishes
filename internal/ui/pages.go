@@ -237,6 +237,8 @@ type homePage struct {
 	greet    *qt.QLabel
 	box      *qt.QLineEdit
 	recent   *CardRow
+	top      *CardRow
+	topTitle *qt.QLabel
 	recs     *CardRow
 	recTitle *qt.QLabel
 	popular  *CardRow
@@ -293,6 +295,11 @@ func (u *UI) buildHome() *homePage {
 	hp.recent = u.cardRow("RecentRow")
 	b.AddWidget(hp.recent.QWidget)
 
+	hp.topTitle = label(tr("Your most played"), "", "heading")
+	b.AddWidget(hp.topTitle.QWidget)
+	hp.top = u.cardRow("TopRow")
+	b.AddWidget(hp.top.QWidget)
+
 	hp.recTitle = label(tr("Recommended for you"), "", "heading")
 	b.AddWidget(hp.recTitle.QWidget)
 	hp.recs = u.cardRow("RecommendedRow")
@@ -330,6 +337,16 @@ func (hp *homePage) refresh() {
 	}
 	recent := u.core.Library.Recent(20)
 	hp.recent.SetTracks(recent, tr("Nothing yet. Play something!"))
+	songs, _, _ := u.core.Library.Top(time.Now().AddDate(0, 0, -30), 20)
+	var top []core.Track
+	for _, r := range songs {
+		if r.Plays > 0 {
+			top = append(top, *r.Track)
+		}
+	}
+	hp.top.SetTracks(top, "")
+	hp.top.SetVisible(len(top) > 0)
+	hp.topTitle.SetVisible(len(top) > 0)
 	seed := ""
 	if len(recent) > 0 {
 		seed = recent[0].Key()
@@ -417,12 +434,42 @@ func (hp *homePage) loadPopular() {
 // ---------------------------------------------------------------- search
 
 type searchPage struct {
-	w       *qt.QWidget
-	box     *qt.QLineEdit
-	sources *qt.QComboBox
-	list    *TrackList
-	info    *qt.QLabel
-	seq     int
+	w        *qt.QWidget
+	box      *qt.QLineEdit
+	sources  *qt.QComboBox
+	list     *TrackList
+	info     *qt.QLabel
+	seq      int
+	history  *qt.QHBoxLayout
+	historyW *qt.QWidget
+	u        *UI
+}
+
+// refreshHistory shows the recent searches as chips.
+func (sp *searchPage) refreshHistory() {
+	u := sp.u
+	clearLayout(sp.history.QLayout)
+	qs := u.core.Library.RecentSearches()
+	sp.historyW.SetVisible(len(qs) > 0)
+	if len(qs) > 8 {
+		qs = qs[:8]
+	}
+	sp.history.AddWidget(label(tr("Recent:"), "", "hint").QWidget)
+	for _, q := range qs {
+		q := q
+		b := qt.NewQPushButton3(ellipsis(q, 28))
+		role(b.QWidget, "chip-button")
+		handCursor(b.QWidget)
+		b.OnClicked(func() {
+			sp.box.SetText(q)
+			u.doSearch(sp)
+		})
+		sp.history.AddWidget(b.QWidget)
+	}
+	clear := u.iconButton("SearchHistoryClear", "close", tr("Clear the recent searches"))
+	clear.OnClicked(func() { u.core.Library.ClearSearches(); sp.refreshHistory() })
+	sp.history.AddWidget(clear.QWidget)
+	sp.history.AddStretch()
 }
 
 func (u *UI) buildSearch() *searchPage {
@@ -443,6 +490,13 @@ func (u *UI) buildSearch() *searchPage {
 	b.AddLayout(row.QLayout)
 	sp.info = label("", "SearchInfo", "hint")
 	b.AddWidget(sp.info.QWidget)
+	hw := qt.NewQWidget2()
+	hw.SetObjectName("SearchHistory")
+	sp.history = hbox(hw, []int{0, 0, 0, 6}, 6)
+	sp.historyW = hw
+	b.AddWidget(hw)
+	sp.u = u
+	sp.refreshHistory()
 	sp.list = u.trackList("SearchList")
 	b.AddWidget2(sp.list.QWidget, 1)
 	u.fillSources(sp.sources, true)
@@ -477,6 +531,8 @@ func (u *UI) doSearch(sp *searchPage) {
 	}
 	sp.list.SetTracks(nil, tr("Searching…"))
 	sp.info.SetText("")
+	u.core.Library.AddSearch(q)
+	sp.refreshHistory()
 	type result struct {
 		name   string
 		tracks []core.Track

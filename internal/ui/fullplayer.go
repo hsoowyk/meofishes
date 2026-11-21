@@ -85,7 +85,9 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	bb := hbox(bar.QWidget, []int{8, 4, 8, 4}, 2)
 	add := func(name, icon, tip string, fn func()) *IconButton {
 		b := u.iconButton(name, icon, tip)
-		b.OnClicked(fn)
+		if fn != nil {
+			b.OnClicked(fn)
+		}
 		bb.AddWidget(b.QWidget)
 		return b
 	}
@@ -125,6 +127,13 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 		_ = u.cfg.Save()
 	})
 	u.volBtns = append(u.volBtns, vol)
+	sleep := add("FullSleep", "timer", tr("Sleep timer"), nil)
+	sleep.OnClicked(func() {
+		m := qt.NewQMenu(u.win.QWidget)
+		u.sleepMenu(m)
+		m.ExecWithPos(qt.QCursor_Pos())
+		m.DeleteLater()
+	})
 	add("FullMore", "more", tr("More"), func() {
 		if cur := u.current(); cur != nil {
 			u.trackMenuFor([]core.Track{*cur}, 0, u.PlayList, nil)

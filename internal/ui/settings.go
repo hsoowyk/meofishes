@@ -523,6 +523,15 @@ func (sp *settingsPage) playback(s *sb) {
 			u.tray.SetVisible(on)
 		}
 	})
+	s.toggle(tr("Media keys and desktop widget"), tr("MPRIS: media keys, the media widget of the panel, the lock screen and playerctl control meofishes."), u.cfg.Prefs.MPRIS, func(on bool) {
+		u.cfg.Prefs.MPRIS = on
+		if on {
+			u.startMPRIS()
+		} else {
+			u.stopMPRIS()
+		}
+	})
+	s.toggle(tr("Notify when a song starts"), tr("Only while the window is not in front."), u.cfg.Prefs.Notify, func(on bool) { u.cfg.Prefs.Notify = on })
 	s.toggle(tr("Keep playing when the window is closed"), tr("Closing the window hides it in the tray; quit from the tray icon."), u.cfg.Prefs.Background, func(on bool) { u.cfg.Prefs.Background = on })
 	s.toggle(tr("Autoplay"), tr("When the queue ends, keep playing similar songs."), u.cfg.Prefs.Autoplay, func(on bool) { u.cfg.Prefs.Autoplay = on })
 	s.toggle(tr("Stop after the current song"), "", u.cfg.Prefs.StopAfterTrack, func(on bool) { u.cfg.Prefs.StopAfterTrack = on })
@@ -542,7 +551,54 @@ func (sp *settingsPage) playback(s *sb) {
 	s.note(tr("Audio changes restart the player (the song continues where it was)."))
 	s.choice(tr("Volume normalization (ReplayGain)"), "", [][2]string{{"no", tr("Off")}, {"track", tr("Per song")}, {"album", tr("Per album")}},
 		u.cfg.Prefs.ReplayGain, func(v string) { u.cfg.Prefs.ReplayGain = v; u.restartPlayer() })
-	s.toggle(tr("Even out loudness"), tr("Dynamic normalization: quiet and loud songs sound alike."), u.cfg.Prefs.Normalize, func(on bool) { u.cfg.Prefs.Normalize = on; u.restartPlayer() })
+	s.toggle(tr("Even out loudness"), tr("Dynamic normalization: quiet and loud songs sound alike."), u.cfg.Prefs.Normalize, func(on bool) { u.cfg.Prefs.Normalize = on; u.applyFilters() })
+	s.choice(tr("Speed"), tr("Pitch is kept."), [][2]string{{"0.5", "0.5×"}, {"0.75", "0.75×"}, {"0.9", "0.9×"}, {"1", "1×"}, {"1.1", "1.1×"}, {"1.25", "1.25×"}, {"1.5", "1.5×"}, {"2", "2×"}},
+		strconv.FormatFloat(u.cfg.Prefs.Speed, 'f', -1, 64), func(v string) {
+			f, _ := strconv.ParseFloat(v, 64)
+			u.setSpeed(f)
+		})
+
+	s.section(tr("Equalizer"))
+	s.toggle(tr("Equalizer"), "", u.cfg.Prefs.EQOn, func(on bool) { u.cfg.Prefs.EQOn = on; u.applyFilters() })
+	presets := [][2]string{{"flat", tr("Flat")}, {"bass", tr("Bass boost")}, {"treble", tr("Treble boost")}, {"vocal", tr("Vocal")},
+		{"rock", "Rock"}, {"pop", "Pop"}, {"electronic", tr("Electronic")}, {"acoustic", tr("Acoustic")}, {"loudness", tr("Loudness")}, {"custom", tr("Custom")}}
+	cur := u.cfg.Prefs.EQPreset
+	if len(u.cfg.Prefs.EQ) == len(player.EQBands) {
+		cur = "custom"
+	}
+	s.choice(tr("Preset"), "", presets, cur, func(v string) {
+		u.cfg.Prefs.EQPreset = v
+		if v != "custom" {
+			u.cfg.Prefs.EQ = nil
+		} else if len(u.cfg.Prefs.EQ) != len(player.EQBands) {
+			u.cfg.Prefs.EQ = make([]float64, len(player.EQBands))
+		}
+		u.cfg.Prefs.EQOn = true
+		u.applyFilters()
+		s.refresh()
+	})
+	gains := u.eqGainsFor(u.cfg.Prefs.EQPreset)
+	for i, f := range player.EQBands {
+		i := i
+		name := itoa(f) + " Hz"
+		if f >= 1000 {
+			name = itoa(f/1000) + " kHz"
+		}
+		s.number(name, "", -12, 12, int(gains[i]), "dB", func(v int) {
+			if len(u.cfg.Prefs.EQ) != len(player.EQBands) {
+				u.cfg.Prefs.EQ = append([]float64(nil), u.eqGainsFor(u.cfg.Prefs.EQPreset)...)
+			}
+			u.cfg.Prefs.EQ[i] = float64(v)
+			u.cfg.Prefs.EQPreset = "custom"
+			u.cfg.Prefs.EQOn = true
+			if u.eqTimer == nil {
+				u.eqTimer = qt.NewQTimer()
+				u.eqTimer.SetSingleShot(true)
+				u.eqTimer.OnTimeout(u.applyFilters)
+			}
+			u.eqTimer.Start(250)
+		})
+	}
 	devs := [][2]string{{"", tr("Automatic")}}
 	if u.mpv != nil {
 		var names []string
@@ -852,3 +908,14 @@ func humanBytes(n int64) string {
 func homeDir() string { h, _ := os.UserHomeDir(); return h }
 
 func uiStrings() []string { return i18n.Keys() }
+
+// eqGainsFor returns the gains shown in Settings (custom or a preset).
+func (u *UI) eqGainsFor(preset string) []float64 {
+	if len(u.cfg.Prefs.EQ) == len(player.EQBands) {
+		return u.cfg.Prefs.EQ
+	}
+	if g, ok := player.EQPresets[preset]; ok {
+		return g
+	}
+	return player.EQPresets["flat"]
+}

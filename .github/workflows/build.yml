@@ -33,7 +33,7 @@ jobs:
           CGO_ENABLED=0 go test ./internal/core/... ./internal/player/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/... \
             ./internal/stream/... ./internal/library/... ./internal/viz/... ./internal/app/... ./internal/i18n/... \
             ./internal/catalog/... ./internal/config/... ./internal/builtin/... \
-            ./internal/offline/... ./internal/ctl/... ./internal/update/...
+            ./internal/offline/... ./internal/ctl/... ./internal/update/... ./internal/mpris/... ./internal/sysproc/...
           go run ./tools/uicheck ./internal/ui ./cmd/meofishes
 
       - name: Build
@@ -56,11 +56,82 @@ jobs:
           name: meofishes-linux-x86_64
           path: meofishes-linux-x86_64.tar.gz
 
+  # experimental: they must not break the Linux build
+  macos:
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Install Qt
+        run: brew install qt@5 pkg-config
+      - name: Build
+        env:
+          CGO_CXXFLAGS: "-O1 -w"
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix qt@5)/lib/pkgconfig"
+          go build -ldflags="-s -w -X meofishes/internal/config.Commit=${GITHUB_SHA}" -o meofishes ./cmd/meofishes
+          mkdir -p dist/meofishes
+          cp meofishes dist/meofishes/
+          cp -r docs dist/meofishes/
+          tar -C dist -czf meofishes-macos-arm64.tar.gz meofishes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meofishes-macos-arm64
+          path: meofishes-macos-arm64.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-go mingw-w64-x86_64-gcc mingw-w64-x86_64-qt5-base
+            mingw-w64-x86_64-qt5-tools mingw-w64-x86_64-pkgconf zip
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          CGO_CXXFLAGS: "-O1 -w"
+          GOTOOLCHAIN: auto
+        run: |
+          go build -ldflags="-s -w -H windowsgui -X meofishes/internal/config.Commit=${GITHUB_SHA}" -o meofishes.exe ./cmd/meofishes
+          mkdir -p dist/meofishes
+          cp meofishes.exe dist/meofishes/
+          cp -r docs dist/meofishes/
+          windeployqt --release --no-translations dist/meofishes/meofishes.exe || true
+          for d in libgcc_s_seh-1 libstdc++-6 libwinpthread-1; do cp /mingw64/bin/$d.dll dist/meofishes/ || true; done
+          (cd dist && zip -qr ../meofishes-windows-x86_64.zip meofishes)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meofishes-windows-x86_64
+          path: meofishes-windows-x86_64.zip
+
+  # the "nightly" release that `meofishes update` installs: whatever built
+  publish:
+    needs: [linux-x86_64, macos, windows]
+    if: always() && needs.linux-x86_64.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
       - name: Publish nightly release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          ls -la artifacts
           gh release delete nightly --yes --cleanup-tag || true
-          gh release create nightly meofishes-linux-x86_64.tar.gz --prerelease --target "$GITHUB_SHA" \
-            --title "nightly" --notes "Latest build of ${GITHUB_SHA}. Install: extract and run ./install.sh — then 'meofishes update' keeps it current."
+          gh release create nightly artifacts/* --prerelease --target "$GITHUB_SHA" \
+            --title "nightly" --notes "Latest build of ${GITHUB_SHA}. Linux: extract and run ./install.sh — then 'meofishes update' keeps it current. macOS and Windows builds are experimental."

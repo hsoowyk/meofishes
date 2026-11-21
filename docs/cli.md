@@ -11,6 +11,8 @@ meofishes volume [50 | +5 | -5]
 meofishes mute | like | unlike | shuffle | repeat [off|all|one]
 meofishes lyrics                      the lyrics of the song playing
 meofishes queue | show | fullscreen | quit
+meofishes sleep [minutes | end | off] sleep timer (fades out, then pauses)
+meofishes speed [0.5 … 2]             playback speed (pitch kept)
 ```
 
 They talk to the app through `$XDG_RUNTIME_DIR/meofishes.sock` (exit code 3
@@ -34,3 +36,6 @@ meofishes version                     print the version
 ```
 
 All commands use your real configuration and plugins.
+
+`playerctl` works too (MPRIS): `playerctl -p meofishes play-pause`,
+`playerctl -p meofishes metadata`.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"meofishes/internal/core"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -151,6 +152,45 @@ func YtdlpStreamURL(ctx context.Context, page string) (string, error) {
 	return lines[0], nil
 }
 
+// YtdlpPlaylist lists a playlist/album/channel page (YouTube, SoundCloud,
+// Bandcamp…): its title and its entries as track-like maps.
+func YtdlpPlaylist(ctx context.Context, page string, limit int) (string, []map[string]any, error) {
+	args := []string{"--flat-playlist", "-J"}
+	if limit > 0 {
+		args = append(args, "--playlist-end", strconv.Itoa(limit))
+	}
+	out, err := runYtdlp(ctx, append(args, page)...)
+	if err != nil {
+		return "", nil, err
+	}
+	var doc struct {
+		Title   string           `json:"title"`
+		Entries []map[string]any `json:"entries"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		return "", nil, err
+	}
+	var res []map[string]any
+	for _, x := range doc.Entries {
+		res = append(res, ytdlpEntry(x))
+	}
+	return doc.Title, res, nil
+}
+
+// TrackFromMap converts a track-like map (ytdlp module) into a Track that
+// the plugin "source" plays.
+func TrackFromMap(m map[string]any, source string) core.Track {
+	t := core.Track{Source: source, ID: toString(m["id"]), Title: toString(m["title"]), Artist: toString(m["artist"]),
+		Album: toString(m["album"]), Cover: toString(m["cover"]), StreamURL: toString(m["streamUrl"]), VideoID: toString(m["videoId"])}
+	if d, ok := m["durationMs"].(int64); ok {
+		t.DurationMs = d
+	}
+	if t.ID == "" {
+		t.ID = t.StreamURL
+	}
+	return t
+}
+
 func ytdlpModule(e *moduleEnv) map[string]any {
 	ctx := context.Background()
 	return map[string]any{
@@ -171,25 +211,8 @@ func ytdlpModule(e *moduleEnv) map[string]any {
 		},
 		"streamUrl": func(page string) (string, error) { return YtdlpStreamURL(ctx, page) },
 		"playlist": func(page string, limit int) ([]map[string]any, error) {
-			args := []string{"--flat-playlist", "-J"}
-			if limit > 0 {
-				args = append(args, "--playlist-end", strconv.Itoa(limit))
-			}
-			out, err := runYtdlp(ctx, append(args, page)...)
-			if err != nil {
-				return nil, err
-			}
-			var doc struct {
-				Entries []map[string]any `json:"entries"`
-			}
-			if err := json.Unmarshal(out, &doc); err != nil {
-				return nil, err
-			}
-			var res []map[string]any
-			for _, x := range doc.Entries {
-				res = append(res, ytdlpEntry(x))
-			}
-			return res, nil
+			_, res, err := YtdlpPlaylist(ctx, page, limit)
+			return res, err
 		},
 	}
 }

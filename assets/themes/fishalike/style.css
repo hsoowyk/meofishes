@@ -360,6 +360,16 @@ QLabel[role="card-title"] { font-size: 14px; font-weight: 700; }
 QLabel[role="card-sub"]   { font-size: 12px; color: var(--text-dim); }
 QLabel[role="card-error"] { font-size: 12px; color: var(--pink); }
 
+QPushButton[role="chip-button"] {
+  background: alpha(var(--red), .14);
+  border: none;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+QPushButton[role="chip-button"]:hover { background: alpha(var(--red), .26); color: var(--text); }
+
 QLabel[role="chip"] {
   background: alpha(var(--red), .2);
   color: var(--pink-light);

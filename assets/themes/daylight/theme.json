@@ -1,0 +1,11 @@
+{
+  "id": "daylight",
+  "name": "Daylight",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "A clean light theme: white, soft grays and coral. Extends Fishalike.",
+  "extends": "fishalike",
+  "style": "style.css",
+  "dark": false,
+  "preview": { "background": "#f7f7f8", "surface": "#ffffff", "accent": "#e8604c", "highlight": "#e8604c", "text": "#1c1c1e" }
+}

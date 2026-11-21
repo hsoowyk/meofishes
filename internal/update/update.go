@@ -4,6 +4,7 @@ package update
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -13,12 +14,26 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
-// Asset is the file the CI publishes.
-const Asset = "meofishes-linux-x86_64.tar.gz"
+// Asset is the file the CI publishes for this system.
+var Asset = assetName(runtime.GOOS, runtime.GOARCH)
+
+func assetName(goos, arch string) string {
+	if arch == "amd64" {
+		arch = "x86_64"
+	}
+	switch goos {
+	case "darwin":
+		return "meofishes-macos-" + arch + ".tar.gz"
+	case "windows":
+		return "meofishes-windows-" + arch + ".zip"
+	}
+	return "meofishes-" + goos + "-" + arch + ".tar.gz"
+}
 
 // Release is the latest build.
 type Release struct {
@@ -119,6 +134,9 @@ func Apply(ctx context.Context, r *Release, ua string, progress func(done, total
 	if progress != nil {
 		body = &counter{r: resp.Body, total: resp.ContentLength, f: progress}
 	}
+	if strings.HasSuffix(r.URL, ".zip") {
+		return applyZip(body, exe, dir)
+	}
 	gz, err := gzip.NewReader(body)
 	if err != nil {
 		return err
@@ -162,8 +180,54 @@ func Apply(ctx context.Context, r *Release, ua string, progress func(done, total
 	return nil
 }
 
+// applyZip installs a Windows build (meofishes/meofishes.exe + docs + the
+// Qt files next to it).
+func applyZip(body io.Reader, exe, dir string) error {
+	tmp, err := os.CreateTemp("", "meofishes-update-*.zip")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := io.Copy(tmp, body); err != nil {
+		tmp.Close()
+		return err
+	}
+	tmp.Close()
+	zr, err := zip.OpenReader(tmp.Name())
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+	got := false
+	for _, f := range zr.File {
+		name := filepath.ToSlash(filepath.Clean(f.Name))
+		rel, ok := strings.CutPrefix(name, "meofishes/")
+		if !ok || rel == "" || strings.Contains(rel, "..") || f.FileInfo().IsDir() {
+			continue
+		}
+		dst := filepath.Join(dir, filepath.FromSlash(rel))
+		if strings.EqualFold(rel, "meofishes.exe") {
+			dst = exe
+			got = true
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		err = writeAtomic(dst, rc, 0o755)
+		rc.Close()
+		if err != nil {
+			return err
+		}
+	}
+	if !got {
+		return errors.New("the archive has no meofishes.exe")
+	}
+	return nil
+}
+
 // writeAtomic writes to dst.new and renames it over dst (a running
-// executable can be replaced this way).
+// executable can be replaced this way; on Windows it is moved aside first).
 func writeAtomic(dst string, r io.Reader, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
@@ -180,6 +244,10 @@ func writeAtomic(dst string, r io.Reader, mode os.FileMode) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(dst + ".old")
+		_ = os.Rename(dst, dst+".old") // a running .exe can be renamed, not replaced
 	}
 	return os.Rename(tmp, dst)
 }

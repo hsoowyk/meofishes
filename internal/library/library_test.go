@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"meofishes/internal/core"
 )
@@ -53,5 +54,27 @@ func TestLibraryAndMepw(t *testing.T) {
 	}
 	if err := l.Delete(LikedID); err == nil {
 		t.Fatal("deleted liked")
+	}
+}
+
+func TestStatsAndSearches(t *testing.T) {
+	l := Open(filepath.Join(t.TempDir(), "l.json"))
+	a := core.Track{ID: "1", Source: "x", Title: "A", Artist: "Ana", DurationMs: 200000}
+	b := core.Track{ID: "2", Source: "x", Title: "B", Artist: "Bia", DurationMs: 200000}
+	l.RecordListen(a, 120000)
+	l.RecordListen(a, 60000)
+	l.RecordListen(b, 10000) // too short to count as a play
+	songs, artists, total := l.Top(time.Time{}, 10)
+	if len(songs) != 2 || songs[0].Track.ID != "1" || songs[0].Plays != 2 || songs[1].Plays != 0 {
+		t.Fatalf("songs %+v", songs)
+	}
+	if artists[0].Name != "Ana" || total != 190*time.Second {
+		t.Fatalf("artists %+v total %v", artists, total)
+	}
+	l.AddSearch("daft punk")
+	l.AddSearch("Weeknd")
+	l.AddSearch("DAFT PUNK")
+	if s := l.RecentSearches(); len(s) != 2 || s[0] != "DAFT PUNK" {
+		t.Fatalf("searches %v", s)
 	}
 }

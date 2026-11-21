@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	qt "github.com/mappu/miqt/qt"
@@ -20,10 +19,12 @@ import (
 	"meofishes/internal/ctl"
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
+	"meofishes/internal/mpris"
 	"meofishes/internal/netlog"
 	"meofishes/internal/offline"
 	"meofishes/internal/player"
 	"meofishes/internal/plugin"
+	"meofishes/internal/sysproc"
 	"meofishes/internal/theme"
 	"meofishes/internal/update"
 )
@@ -63,6 +64,13 @@ type UI struct {
 	tray            *qt.QSystemTrayIcon
 	trayNow         *qt.QAction
 	quitting        bool
+	mpris           *mpris.Server
+	sleepTimer      *qt.QTimer
+	sleepAt         time.Time
+	sleepVol        float64
+	mprisTick       int
+	eqTimer         *qt.QTimer
+	listenMs        int64 // time the current song really played (statistics)
 	prefetched      map[string]prefetch
 	autoplayOn      bool // a recommendation request is running
 	restorePos      int64
@@ -177,6 +185,7 @@ func Run(assets fs.FS) int {
 	}
 	u.anim.FollowScreen(u.win.QWidget) // animations run at the screen's refresh rate
 	u.buildTray()
+	u.startMPRIS()
 	qt.QGuiApplication_SetQuitOnLastWindowClosed(false) // hiding to the tray must not quit
 	u.enterAll()
 	u.startTimers()
@@ -204,6 +213,10 @@ func Run(assets fs.FS) int {
 	c.Library.OnChange(func() { mainthread.Start(u.libraryChanged) })
 
 	code := qt.QApplication_Exec()
+	u.stopMPRIS()
+	if u.streamTrack.Title != "" {
+		u.core.Library.RecordListen(u.streamTrack, u.listenMs)
+	}
 	u.saveQueue()
 	if u.player != nil {
 		u.player.Close()
@@ -221,7 +234,7 @@ func (u *UI) restart() {
 	u.core.Close()
 	exe, err := os.Executable()
 	if err == nil {
-		_ = syscall.Exec(exe, os.Args, os.Environ())
+		_ = sysproc.Restart(exe, os.Args) // Unix: replaces us; Windows: starts a new copy
 	}
 	qt.QCoreApplication_Quit()
 }
@@ -342,7 +355,7 @@ func (u *UI) toast(msg string) {
 func (u *UI) mpvOptions() player.Options {
 	pr := u.cfg.Prefs
 	o := player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
-		Normalize: pr.Normalize, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
+		Normalize: pr.Normalize, EQ: u.eqGains(), Speed: pr.Speed, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
 		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat(), AudioFmt: plugin.QualityFormat(pr.AudioQuality)}
 	if u.full != nil && u.full.video != nil {
 		o.Wid = u.full.video.WinId()
@@ -453,6 +466,9 @@ func (u *UI) startTimers() {
 			u.tTotal[i].SetText(total)
 		}
 		playing := !st.Paused && !st.Idle
+		if playing {
+			u.listenMs += 200
+		}
 		if playing != lastPlaying || first {
 			first = false
 			lastPlaying = playing
@@ -468,6 +484,12 @@ func (u *UI) startTimers() {
 			}
 			if u.full.open {
 				u.full.syncRight()
+			}
+			u.syncMPRIS()
+		}
+		if u.mpris != nil {
+			if u.mprisTick++; u.mprisTick%5 == 0 {
+				u.mpris.SetPosition(st.PositionMs)
 			}
 		}
 		if !playing {
@@ -810,6 +832,8 @@ func (u *UI) playCurrent() {
 				})
 			}
 			u.core.Plugins.Emit(plugin.EventTrackStart, map[string]any{"track": track})
+			u.notifyTrack()
+			singleShot(1500, u.syncMPRIS) // the length is known now
 			singleShot(4000, func() { u.prefetchNext(gen) })
 		})
 		// lyrics: wait for the duration if the source did not know it
@@ -986,6 +1010,9 @@ func (u *UI) TogglePlay() {
 func (u *UI) SeekTo(ms int64) {
 	if u.player != nil {
 		_ = u.player.SeekTo(max(0, ms))
+		if u.mpris != nil {
+			u.mpris.Seeked(max(0, ms))
+		}
 		u.core.Plugins.Emit(plugin.EventSeek, map[string]any{"positionMs": ms})
 	}
 }
@@ -1013,6 +1040,7 @@ func (u *UI) setVolume(v float64) {
 	for _, s := range u.volSliders {
 		s.SetValue(v / 100)
 	}
+	u.syncMPRIS()
 }
 
 func (u *UI) toggleShuffle() {
@@ -1024,6 +1052,7 @@ func (u *UI) toggleShuffle() {
 		u.shuffleRest()
 		u.refreshQueue()
 	}
+	u.syncMPRIS()
 }
 
 func (u *UI) cycleRepeat() {
@@ -1039,6 +1068,7 @@ func (u *UI) cycleRepeat() {
 }
 
 func (u *UI) syncRepeat() {
+	defer u.syncMPRIS()
 	for _, b := range u.repeatBtns {
 		switch u.cfg.Repeat {
 		case "one":
@@ -1109,6 +1139,7 @@ func (u *UI) showNowPlaying(t core.Track) {
 	}
 	u.syncLike()
 	u.syncTray()
+	u.syncMPRIS()
 	if u.full != nil {
 		u.full.trackChanged(t)
 	}
@@ -1214,6 +1245,10 @@ func plural(n int, one, many string) string {
 // downloaded in full by the chunk proxy (no extra download).
 func (u *UI) cacheLeaving() {
 	st, t := u.stream, u.streamTrack
+	if t.Title != "" {
+		u.core.Library.RecordListen(t, u.listenMs)
+	}
+	u.listenMs = 0
 	if st == nil || !u.cfg.Prefs.AutoCache || u.core.Proxy == nil || t.Title == "" || u.core.Offline.Kind(t) != "" {
 		return
 	}

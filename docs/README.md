@@ -6,6 +6,7 @@ plugins**: search, playback, lyrics, covers, recommendations. The look is
 
 | guide | what it covers |
 |---|---|
+| [Features](features.md) | everything meofishes does, in one page |
 | [Getting started](getting-started.md) | install, first run, the interface, shortcuts, tutorial |
 | [Building](building.md) | compiling, the fast Qt shared library, CI, `uicheck` |
 | [Command line](cli.md) | `meofishes lyrics`, `search`, `check`, `css`, `setup`… |

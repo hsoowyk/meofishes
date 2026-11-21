@@ -1,0 +1,11 @@
+{
+  "id": "moss",
+  "name": "Moss",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Deep forest green with moss and amber. Extends Fishalike.",
+  "extends": "fishalike",
+  "style": "style.css",
+  "dark": true,
+  "preview": { "background": "#0d1510", "surface": "#1a2a1f", "accent": "#7fb069", "highlight": "#e6c46a", "text": "#eef3e8" }
+}

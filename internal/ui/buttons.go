@@ -468,6 +468,18 @@ func drawIcon(p *qt.QPainter, name string, cx, cy, size float64, c theme.Color) 
 		stroke(false, 14, 8, 21, 8)
 		stroke(false, 14, 12.5, 21, 12.5)
 		stroke(false, 4, 18.5, 21, 18.5)
+	case "timer":
+		circle(12, 13, 7.5, false)
+		stroke(false, 12, 13, 12, 9)
+		stroke(false, 12, 13, 14.5, 14.5)
+		stroke(false, 10, 3.5, 14, 3.5)
+	case "eq":
+		stroke(false, 6, 4, 6, 20)
+		stroke(false, 12, 4, 12, 20)
+		stroke(false, 18, 4, 18, 20)
+		rect(4, 13, 4, 2.5, 1)
+		rect(10, 7, 4, 2.5, 1)
+		rect(16, 15, 4, 2.5, 1)
 	case "video":
 		stroke(true, 3, 6.5, 16, 6.5, 16, 17.5, 3, 17.5)
 		fill(16.5, 12, 21, 8, 21, 16)

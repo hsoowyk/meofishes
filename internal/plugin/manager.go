@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"meofishes/internal/sysproc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -891,7 +891,7 @@ func (mg *Manager) Build(id string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", p.Manifest.Build)
+	cmd := sysproc.Shell(ctx, p.Manifest.Build)
 	cmd.Dir = p.Dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

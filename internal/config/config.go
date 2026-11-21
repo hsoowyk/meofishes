@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -15,7 +16,7 @@ import (
 )
 
 // Version of the app.
-const Version = "0.3.0"
+const Version = "0.4.0"
 
 // Commit is the git commit of this build (set by the CI with -ldflags
 // "-X meofishes/internal/config.Commit=…"); "dev" for local builds.
@@ -61,6 +62,16 @@ func DefaultPaths() Paths {
 		Config: filepath.Join(xdg("XDG_CONFIG_HOME", ".config"), "meofishes"),
 		Data:   filepath.Join(xdg("XDG_DATA_HOME", ".local/share"), "meofishes"),
 		Cache:  filepath.Join(xdg("XDG_CACHE_HOME", ".cache"), "meofishes"),
+	}
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		// %AppData% / ~/Library/Application Support and the system cache
+		if d, err := os.UserConfigDir(); err == nil {
+			p.Config = filepath.Join(d, "meofishes")
+			p.Data = filepath.Join(d, "meofishes", "data")
+		}
+		if d, err := os.UserCacheDir(); err == nil {
+			p.Cache = filepath.Join(d, "meofishes")
+		}
 	}
 	p.Plugins = filepath.Join(p.Data, "plugins")
 	p.Themes = filepath.Join(p.Data, "themes")
@@ -145,6 +156,16 @@ type Prefs struct {
 	PauseOnUnplug  bool   `json:"pauseOnUnplug"`  // reserved
 	StopAfterTrack bool   `json:"stopAfterTrack"` // stop when the current track ends
 
+	// equalizer and speed
+	EQOn     bool      `json:"eqOn"`
+	EQ       []float64 `json:"eq,omitempty"` // dB per band (player.EQBands)
+	EQPreset string    `json:"eqPreset"`
+	Speed    float64   `json:"speed"`
+
+	// desktop integration
+	MPRIS  bool `json:"mpris"`  // media keys, desktop media widget, playerctl
+	Notify bool `json:"notify"` // a notification when a song starts
+
 	// AudioQuality is the maximum quality: max | high | normal | low.
 	AudioQuality string `json:"audioQuality"`
 
@@ -208,7 +229,8 @@ func DefaultPrefs() Prefs {
 		ReplayGain: "track", CacheMB: 64, ReadaheadSecs: 30, SeekStepSecs: 10, Autoplay: true, PersistQueue: true,
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
-		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
+		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true,
+		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
 	}
 }
 

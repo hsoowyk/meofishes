@@ -1,0 +1,26 @@
+/* Daylight: light and neutral. The logo turns dark by itself. */
+:root {
+  --wine-0: #ececef;
+  --wine-1: #f7f7f8;
+  --wine-2: #ffffff;
+  --wine-3: #f0f0f2;
+  --wine-4: #e2e2e6;
+  --red: #e8604c;
+  --red-soft: #d4523f;
+  --red-deep: #a83c2c;
+  --pink-light: #d4523f;
+  --pink: #e8604c;
+  --pink-dark: #b84a3a;
+  --text: #1c1c1e;
+  --text-dim: #55555c;
+  --text-faint: #8e8e96;
+  --panel: alpha(#ffffff, .7);
+  --border: alpha(#000000, .08);
+}
+#Root { -meo-backdrop-dynamic-strength: 0.1; -meo-backdrop-glow: alpha(#e8604c, .08); }
+#FullPlayer { -meo-backdrop-image-shade: alpha(#000000, .35); }
+QPushButton[role="primary"] { color: #ffffff; }
+#NowCardPlay { -meo-bg: #1c1c1e; -meo-hover-bg: #000000; -meo-icon-color: #ffffff; -meo-hover-icon-color: #ffffff; }
+#FullLyrics { -meo-glow-radius: 0; }
+#Switch { -meo-track-color: alpha(#000000, .14); }
+QToolTip { background: #ffffff; }

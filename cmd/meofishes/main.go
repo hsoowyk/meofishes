@@ -91,6 +91,8 @@ Control the open app:
   meofishes mute | like | unlike | shuffle | repeat [off|all|one]
   meofishes lyrics                      the lyrics of the song playing
   meofishes queue                       the queue
+  meofishes sleep [minutes|end|off]     sleep timer (fades out, then pauses)
+  meofishes speed [0.5 … 2]             playback speed
   meofishes show | fullscreen | quit
 
 Tools:
@@ -275,13 +277,13 @@ func control(args []string) (int, bool) {
 	switch cmd {
 	case "now", "status", "resume", "pause", "toggle", "stop", "next", "prev", "previous", "back",
 		"seek", "volume", "vol", "mute", "like", "unlike", "shuffle", "repeat", "queue", "show",
-		"fullscreen", "quit":
+		"fullscreen", "quit", "sleep", "speed":
 	case "play":
 		if len(args) > 1 && args[1] == "--help" {
 			return 0, false
 		}
 	case "lyrics":
-		if len(args) > 1 { // "Artist" "Title": the provider test below
+		if len(args) > 1 && args[1] != "--json" { // "Artist" "Title": the provider test below
 			return 0, false
 		}
 	default:

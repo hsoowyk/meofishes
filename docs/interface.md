@@ -39,8 +39,8 @@ the name, role and properties of the widget under the mouse.
 
 | page | objects |
 |---|---|
-| Home `#HomePage` | `#Greeting`, `#HomeSearch`, rows `#RecentRow`, `#RecommendedRow`, `#PopularRow` (cards `#Card` with `#CardCover`), `#HomeSource` |
-| Search `#SearchPage` | `#SearchBox`, `#SourcePicker`, `#SearchInfo`, `#SearchList` |
+| Home `#HomePage` | `#Greeting`, `#HomeSearch`, rows `#RecentRow`, `#TopRow`, `#RecommendedRow`, `#PopularRow` (cards `#Card` with `#CardCover`), `#HomeSource` |
+| Search `#SearchPage` | `#SearchBox`, `#SourcePicker`, `#SearchInfo`, `#SearchHistory` (buttons `[role="chip-button"]`, `#SearchHistoryClear`), `#SearchList` |
 | Library `#LibraryPage` | cards `QFrame[role="card"]#PlaylistCard` with `#PlaylistCover` |
 | Playlist `#PlaylistPage` | `#PlaylistHeaderCover`, `#PlaylistTitle`, `#PlaylistSub`, `#PlaylistTracks` |
 | Queue `#QueuePage` | `#QueueList` |
@@ -53,12 +53,14 @@ playing), `#RowDrag`, `#RowCover`, `[role="row-title"]`, `[role="row-sub"]`,
 
 ## Fullscreen player (`#FullPlayer`)
 
-`#FullClose`, `#FullWindow`, `#FullCover` (TiltCover), `#FullTitle`,
-`#FullArtist`, `#FullAlbum`, `#FullLike`, `#FullSeekBar`, `#FullTimeElapsed`,
-`#FullTimeTotal`, `#FullShuffle`, `#FullPrev`, `#FullPlay`, `#FullNext`,
-`#FullRepeat`, `#FullVolumeIcon`, `#FullVolumeBar`, `#FullRight` (stack),
-`#FullLyrics` (LyricsView), `#FullVisualizer`, `#FullLyricsStatus`,
-`#FullLyricsRetry`.
+`#FullClose`, `#FullVideo` (button and video area), `#FullWindow`,
+`#FullCenter`, `#FullCover` (TiltCover: title and artist on hover), `#FullPlay`,
+`#FullBar` with `#FullPrev`, `#FullNext`, `#FullShuffle`, `#FullRepeat`,
+`#FullQueue`, `#FullLyricsToggle`, `#FullArtist`, `#FullLike`,
+`#FullVolumeIcon`, `#FullSleep`, `#FullMore`; `#FullSeekBar`,
+`#FullTimeElapsed`, `#FullTimeTotal`; the side panel `#FullSide` with
+`#FullRight` (stack), `#FullLyrics` (LyricsView), `#FullVisualizer`,
+`#FullLyricsStatus`, `#FullLyricsRetry`. Tray menu: `#TrayMenu`.
 
 ## Roles used by labels and buttons
 

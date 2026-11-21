@@ -1,0 +1,11 @@
+{
+  "id": "ink",
+  "name": "Ink",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Pure black for OLED screens, with soft white and a touch of pink. Extends Fishalike.",
+  "extends": "fishalike",
+  "style": "style.css",
+  "dark": true,
+  "preview": { "background": "#000000", "surface": "#111111", "accent": "#e98aa6", "highlight": "#ffffff", "text": "#f2f2f2" }
+}

@@ -1,0 +1,21 @@
+/* Ink: pure black (OLED), no colored background. */
+:root {
+  --wine-0: #000000;
+  --wine-1: #000000;
+  --wine-2: #0b0b0b;
+  --wine-3: #141414;
+  --wine-4: #1e1e1e;
+  --red: #e98aa6;
+  --red-soft: #d77494;
+  --red-deep: #a8516d;
+  --pink-light: #ffffff;
+  --pink: #e98aa6;
+  --pink-dark: #c2507a;
+  --text: #f2f2f2;
+  --text-dim: #a8a8a8;
+  --text-faint: #6a6a6a;
+  --panel: alpha(#ffffff, .03);
+  --border: alpha(#ffffff, .07);
+}
+#Root { -meo-backdrop-dynamic: false; -meo-backdrop-glow: alpha(#000000, 0); }
+#FullPlayer { -meo-potion-strength: 0.55; -meo-backdrop-image-shade: alpha(#000000, .6); }

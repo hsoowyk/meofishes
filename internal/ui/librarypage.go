@@ -2,9 +2,12 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"meofishes/internal/plugin"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +33,7 @@ type libraryPage struct {
 	dList    *TrackList
 	dActions *qt.QHBoxLayout
 	cards    []*CoverView
+	stats    *qt.QVBoxLayout
 }
 
 func (u *UI) buildLibrary() *libraryPage {
@@ -45,9 +49,11 @@ func (u *UI) buildLibrary() *libraryPage {
 	imp.OnClicked(u.importPlaylists)
 	exp := qt.NewQPushButton3(tr("Export everything…"))
 	exp.OnClicked(func() { u.exportPlaylists(u.core.Library.All()...) })
+	link := qt.NewQPushButton3(tr("Import from link…"))
+	link.OnClicked(u.importFromLink)
 	dls := qt.NewQPushButton3(tr("Downloaded songs"))
 	dls.OnClicked(func() { u.openPlaylist(downloadsID) })
-	for _, x := range []*qt.QPushButton{newp, imp, exp, dls} {
+	for _, x := range []*qt.QPushButton{newp, imp, link, exp, dls} {
 		row.AddWidget(x.QWidget)
 	}
 	row.AddStretch()
@@ -58,6 +64,12 @@ func (u *UI) buildLibrary() *libraryPage {
 	lp.grid.SetSpacing(14)
 	lp.grid.SetContentsMargins(0, 0, 0, 0)
 	b.AddWidget(gw)
+
+	b.AddSpacing(10)
+	b.AddWidget(label(tr("Your stats"), "", "heading").QWidget)
+	sw := qt.NewQWidget2()
+	lp.stats = vbox(sw, nil, 4)
+	b.AddWidget(sw)
 
 	b.AddSpacing(10)
 	b.AddWidget(label(tr("From your plugins"), "", "heading").QWidget)
@@ -95,6 +107,97 @@ func (lp *libraryPage) refresh() {
 	if lp.openID != "" {
 		lp.fillDetail()
 	}
+	lp.fillStats()
+}
+
+// fillStats shows listening time and the top songs and artists.
+func (lp *libraryPage) fillStats() {
+	u := lp.u
+	clearLayout(lp.stats.QLayout)
+	_, _, all := u.core.Library.Top(time.Time{}, 0)
+	songs, artists, month := u.core.Library.Top(time.Now().AddDate(0, 0, -30), 10)
+	if all == 0 {
+		lp.stats.AddWidget(label(tr("Play some music and your stats show up here."), "", "hint").QWidget)
+		return
+	}
+	hours := func(d time.Duration) string {
+		if d < time.Hour {
+			return tr("{n} min", "n", itoa(int(d.Minutes())))
+		}
+		return tr("{n} h", "n", strconv.FormatFloat(d.Hours(), 'f', 1, 64))
+	}
+	lp.stats.AddWidget(label(tr("Listened: {month} in the last 30 days · {all} in total", "month", hours(month), "all", hours(all)), "", "card-sub").QWidget)
+	cols := qt.NewQHBoxLayout2()
+	cols.SetSpacing(24)
+	col := func(title string, rows []library.Ranked, play bool) {
+		w := qt.NewQWidget2()
+		v := vbox(w, nil, 2)
+		v.AddWidget(label(title, "", "card-title").QWidget)
+		for i, r := range rows {
+			r := r
+			text := fmt.Sprintf("%d. %s", i+1, ellipsis(r.Name, 48))
+			l := label(text, "", "row-title")
+			l.SetToolTip(plural(r.Plays, "{n} play", "{n} plays") + " · " + hours(time.Duration(r.Ms)*time.Millisecond))
+			if play && r.Track != nil {
+				handCursor(l.QWidget)
+				t := *r.Track
+				l.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) { u.PlayList([]core.Track{t}, 0) })
+			}
+			v.AddWidget(l.QWidget)
+		}
+		v.AddStretch()
+		cols.AddWidget2(w, 1)
+	}
+	col(tr("Top songs (30 days)"), songs, true)
+	col(tr("Top artists (30 days)"), artists, false)
+	lp.stats.AddLayout(cols.QLayout)
+}
+
+// importFromLink makes a playlist from a YouTube/SoundCloud/Bandcamp link.
+func (u *UI) importFromLink() {
+	ok := false
+	link := strings.TrimSpace(qt.QInputDialog_GetText4(u.win.QWidget, tr("Import from link"),
+		tr("Link of a playlist or album (YouTube, YouTube Music, SoundCloud, Bandcamp…):"), qt.QLineEdit__Normal, "", &ok))
+	if !ok || link == "" {
+		return
+	}
+	if plugin.YtdlpPath() == "" {
+		u.toast(tr("yt-dlp is not installed"))
+		return
+	}
+	u.toast(tr("Reading the playlist…"))
+	var title string
+	var ts []core.Track
+	u.runAsync(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		t, items, err := plugin.YtdlpPlaylist(ctx, link, 1000)
+		if err != nil {
+			return err
+		}
+		title = t
+		for _, m := range items {
+			if tr := plugin.TrackFromMap(m, "ytdlp-search"); tr.Title != "" {
+				ts = append(ts, tr)
+			}
+		}
+		return nil
+	}, func(err error) {
+		if err != nil {
+			qt.QMessageBox_Warning(u.win.QWidget, tr("Could not import"), err.Error())
+			return
+		}
+		if len(ts) == 0 {
+			u.toast(tr("The link has no songs"))
+			return
+		}
+		if title == "" {
+			title = tr("Imported")
+		}
+		p := u.core.Library.Create(title, ts...)
+		u.toast(plural(len(ts), "{n} song imported", "{n} songs imported"))
+		u.openPlaylist(p.ID)
+	})
 }
 
 func (lp *libraryPage) playlistCard(p *library.Playlist) *qt.QWidget {

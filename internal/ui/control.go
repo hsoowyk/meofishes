@@ -179,6 +179,35 @@ func (u *UI) control(cmd string, args []string) (any, error) {
 			out = append(out, fmt.Sprintf("%s%d. %s", mark, i+1, t.String()))
 		}
 		return out, nil
+	case "sleep":
+		if len(args) == 0 {
+			if l := u.sleepLeft(); l != "" {
+				return l, nil
+			}
+			return "off", nil
+		}
+		switch args[0] {
+		case "off", "0":
+			u.setSleep(0)
+		case "end":
+			u.setSleep(-1)
+		default:
+			n, err := strconv.Atoi(args[0])
+			if err != nil || n <= 0 {
+				return nil, errors.New("sleep needs minutes, end or off")
+			}
+			u.setSleep(n)
+		}
+		return u.sleepLeft(), nil
+	case "speed":
+		if len(args) > 0 {
+			v, err := strconv.ParseFloat(args[0], 64)
+			if err != nil {
+				return nil, fmt.Errorf("bad speed %q", args[0])
+			}
+			u.setSpeed(v)
+		}
+		return u.cfg.Prefs.Speed, nil
 	case "fullscreen", "lyrics-view":
 		u.toggleWindowShown()
 		u.openFull()

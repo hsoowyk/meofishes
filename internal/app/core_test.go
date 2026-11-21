@@ -15,7 +15,7 @@ func TestCoreFirstRun(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", dir+"/cache")
 	c := New(assets.FS)
 	defer c.Close()
-	for _, id := range []string{"fishalike", "abyss", "sakura-paper"} {
+	for _, id := range []string{"fishalike", "abyss", "sakura-paper", "ink", "moss", "daylight"} {
 		if id != "fishalike" {
 			if err := c.InstallEntry(entry(c, id)); err != nil {
 				t.Fatal(err)

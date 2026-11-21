@@ -374,7 +374,7 @@ func (v *Visualizer) bands() int {
 // Start analyzes url (a local proxy URL, a file or any mpv-playable URL).
 func (v *Visualizer) Start(url string, headers map[string]string) {
 	v.Stop()
-	if url == "" {
+	if url == "" || !viz.Supported() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())

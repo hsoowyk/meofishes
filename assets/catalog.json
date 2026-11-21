@@ -51,6 +51,54 @@
    }
   },
   {
+   "kind": "theme",
+   "id": "ink",
+   "name": "Ink",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Pure black for OLED screens, with soft white and a touch of pink. Extends Fishalike.",
+   "bundled": "themes/ink",
+   "preview": {
+    "background": "#000000",
+    "surface": "#111111",
+    "accent": "#e98aa6",
+    "highlight": "#ffffff",
+    "text": "#f2f2f2"
+   }
+  },
+  {
+   "kind": "theme",
+   "id": "moss",
+   "name": "Moss",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Deep forest green with moss and amber. Extends Fishalike.",
+   "bundled": "themes/moss",
+   "preview": {
+    "background": "#0d1510",
+    "surface": "#1a2a1f",
+    "accent": "#7fb069",
+    "highlight": "#e6c46a",
+    "text": "#eef3e8"
+   }
+  },
+  {
+   "kind": "theme",
+   "id": "daylight",
+   "name": "Daylight",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "A clean light theme: white, soft grays and coral. Extends Fishalike.",
+   "bundled": "themes/daylight",
+   "preview": {
+    "background": "#f7f7f8",
+    "surface": "#ffffff",
+    "accent": "#e8604c",
+    "highlight": "#e8604c",
+    "text": "#1c1c1e"
+   }
+  },
+  {
    "kind": "plugin",
    "id": "ytdlp-search",
    "name": "YouTube / SoundCloud (yt-dlp)",
