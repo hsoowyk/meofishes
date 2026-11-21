@@ -4,9 +4,11 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -177,4 +179,48 @@ func abs(f float64) float64 {
 		return -f
 	}
 	return f
+}
+
+// paletteColors returns up to n main colors of a pixmap (most present
+// first), grouping saturated pixels by hue.
+func paletteColors(px *qt.QPixmap, n int) []theme.Color {
+	if px == nil || px.IsNull() {
+		return nil
+	}
+	small := px.Scaled3(32, 32, qt.IgnoreAspectRatio, qt.SmoothTransformation)
+	img := small.ToImage()
+	type bin struct{ r, g, b, w float64 }
+	bins := make([]bin, 13) // 12 hues + grays
+	for y := 0; y < img.Height(); y++ {
+		for x := 0; x < img.Width(); x++ {
+			c := fromQ(img.PixelColor(x, y))
+			hh, s, l := c.HSL()
+			k, w := 12, 0.05
+			if s > 0.2 && l > 0.12 && l < 0.9 {
+				k, w = int(hh/30)%12, s*(1-abs(l-0.5))
+			}
+			bins[k].r += c.R * w
+			bins[k].g += c.G * w
+			bins[k].b += c.B * w
+			bins[k].w += w
+		}
+	}
+	idx := make([]int, len(bins))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.Slice(idx, func(a, b int) bool { return bins[idx[a]].w > bins[idx[b]].w })
+	var out []theme.Color
+	for _, i := range idx {
+		if len(out) >= n || bins[i].w <= 0 {
+			break
+		}
+		bn := bins[i]
+		out = append(out, theme.Color{R: bn.r / bn.w, G: bn.g / bn.w, B: bn.b / bn.w, A: 1})
+	}
+	for len(out) > 0 && len(out) < n { // few colors: use shades of the first
+		h, s, l := out[0].HSL()
+		out = append(out, theme.FromHSL(math.Mod(h+float64(len(out))*25, 360), s, math.Min(0.8, l+0.15*float64(len(out)))))
+	}
+	return out
 }

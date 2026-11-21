@@ -67,8 +67,20 @@ Nav icons (`[role="nav"]`) also: `-meo-size` (46px), `-meo-indicator-color`,
 ## Tilting cover — `#FullCover`
 
 `-meo-tilt-max` (degrees, 12), `-meo-tilt-smoothing` (0.01 slow … 1 instant;
-0.12), `-meo-hover-scale` (1.03), `-meo-shadow-color`, `-meo-shadow-size`
-(28px), `-meo-radius`, `-meo-placeholder`, `-meo-placeholder-icon`.
+0.12), `-meo-hover-scale` (1.03), `-meo-hover-blur` (blur of the cover behind
+the title on hover; smaller = blurrier), `-meo-info-color`,
+`-meo-info-font-family`, `-meo-shadow-color`, `-meo-shadow-size` (28px),
+`-meo-radius`, `-meo-placeholder`, `-meo-placeholder-icon`.
+
+The fullscreen player's play button is `#FullPlay` and the bar with the
+other buttons `#FullBar`.
+
+## Potion background — `#FullPlayer`
+
+`-meo-potion` (true: the cover's three main colors swirl like a potion),
+`-meo-potion-speed` (1), `-meo-potion-fps` (30; 0 = the screen's refresh
+rate), `-meo-potion-strength` (0..1). With the potion off, the blurred cover
+(`-meo-backdrop-image-*`) is used.
 
 ## Seek and volume bars — `Slider`
 
@@ -88,7 +100,9 @@ Nav icons (`[role="nav"]`) also: `-meo-size` (46px), `-meo-indicator-color`,
 | `-meo-past-color` | lines already sung |
 | `-meo-active-color` | sung part of the active line |
 | `-meo-upcoming-color` | unsung part of the active line |
-| `-meo-word-animation` | word-synced lyrics: `fill` · `fade` · `bounce` · `glow` · `none` |
+| `-meo-word-animation` | word-synced lyrics: `fill` · `fade` · `bounce` · `glow` · `font` · `none` |
+| `-meo-sung-font-family`, `-meo-sung-font-weight`, `-meo-sung-italic`, `-meo-sung-underline` | the font a sung word switches to (`font`) |
+| `-meo-back-bg`, `-meo-back-color` | the "Back to the current line" button |
 | `-meo-word-fill` | `gradient` · `solid` (for `fill`) |
 | `-meo-fill-softness` | gradient edge (10px) |
 | `-meo-line-animation` | line-synced lyrics: `fade` · `none` — the whole line lights up at once |

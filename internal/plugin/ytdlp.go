@@ -117,8 +117,30 @@ func YtdlpSearch(ctx context.Context, query string, limit int, site string) ([]m
 }
 
 // YtdlpStreamURL extracts the direct audio URL of a page.
+// AudioFormat is the yt-dlp format used for audio (set from the quality
+// setting: see QualityFormat).
+var AudioFormat = "bestaudio/best"
+
+// QualityFormat maps a quality level to a yt-dlp format.
+//
+//	max    the best the source has (lossless when there is one)
+//	high   up to ~192 kbps
+//	normal up to ~128 kbps
+//	low    up to ~64 kbps (saves data)
+func QualityFormat(q string) string {
+	switch q {
+	case "high":
+		return "bestaudio[abr<=192]/bestaudio/best"
+	case "normal":
+		return "bestaudio[abr<=130]/bestaudio/best"
+	case "low":
+		return "bestaudio[abr<=70]/worstaudio/best"
+	}
+	return "bestaudio/best"
+}
+
 func YtdlpStreamURL(ctx context.Context, page string) (string, error) {
-	out, err := runYtdlp(ctx, "-f", "bestaudio/best", "-g", "--no-playlist", page)
+	out, err := runYtdlp(ctx, "-f", AudioFormat, "-g", "--no-playlist", page)
 	if err != nil {
 		return "", err
 	}

@@ -7,7 +7,11 @@ on:
   workflow_dispatch:
 
 # GitHub's ubuntu runners are x86_64 with 16 GB of RAM: native build, no
-# cross-compiling and no out-of-memory kills.
+# cross-compiling and no out-of-memory kills. Pushes to main also publish
+# the build as the "nightly" release, which `meofishes update` installs.
+permissions:
+  contents: write
+
 jobs:
   linux-x86_64:
     runs-on: ubuntu-24.04
@@ -28,16 +32,17 @@ jobs:
         run: |
           CGO_ENABLED=0 go test ./internal/core/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/... \
             ./internal/stream/... ./internal/library/... ./internal/viz/... ./internal/app/... ./internal/i18n/... \
-            ./internal/catalog/... ./internal/config/... ./internal/builtin/...
+            ./internal/catalog/... ./internal/config/... ./internal/builtin/... \
+            ./internal/offline/... ./internal/ctl/... ./internal/update/...
           go run ./tools/uicheck ./internal/ui ./cmd/meofishes
 
       - name: Build
         env:
           CGO_CXXFLAGS: "-O1 -w"
         run: |
-          go build -ldflags="-s -w" -o meofishes ./cmd/meofishes
+          go build -ldflags="-s -w -X meofishes/internal/config.Commit=${GITHUB_SHA}" -o meofishes ./cmd/meofishes
           ls -lh meofishes
-          ./meofishes version
+          ./meofishes version || true
 
       - name: Package
         run: |
@@ -50,3 +55,12 @@ jobs:
         with:
           name: meofishes-linux-x86_64
           path: meofishes-linux-x86_64.tar.gz
+
+      - name: Publish nightly release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly meofishes-linux-x86_64.tar.gz --prerelease --target "$GITHUB_SHA" \
+            --title "nightly" --notes "Latest build of ${GITHUB_SHA}. Install: extract and run ./install.sh — then 'meofishes update' keeps it current."

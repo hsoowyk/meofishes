@@ -3,10 +3,7 @@ package lyrics
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +14,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"meofishes/internal/core"
 )
@@ -545,120 +541,86 @@ func dropKugouCredits(ls []core.Line) []core.Line {
 	return out
 }
 
-// ================================================================ Lyprio
+// ================================================================ LRCLIB
 
-// Lyprio is a signed API. It needs a base URL and a 32-byte HMAC signing key
-// (base64) given by the Lyprio maintainers.
-type Lyprio struct{ Env *Env }
+// LrcLib is lrclib.net: community line-synced lyrics, no key needed.
+type LrcLib struct{ Env *Env }
 
-func (Lyprio) ID() string   { return "lyprio" }
-func (Lyprio) Name() string { return "Lyprio" }
+func (LrcLib) ID() string   { return "lrclib" }
+func (LrcLib) Name() string { return "LRCLIB" }
 
-type lyprioResult struct {
-	Subprovider string `json:"subprovider"`
-	Format      string `json:"format"`
-	SyncType    string `json:"syncType"`
-	Lyrics      string `json:"lyrics"`
-}
-
-func (p Lyprio) Fetch(ctx context.Context, q Query) (*core.Lyrics, error) {
-	base := strings.TrimRight(p.Env.setting(p.ID(), "baseUrl"), "/")
-	key, err := base64.StdEncoding.DecodeString(p.Env.setting(p.ID(), "signingKey"))
-	if base == "" || err != nil || len(key) != 32 {
-		return nil, ErrNotConfigured
+func (p LrcLib) Fetch(ctx context.Context, q Query) (*core.Lyrics, error) {
+	v := url.Values{}
+	v.Set("track_name", CleanTitle(q.Title))
+	v.Set("artist_name", PrimaryArtist(q.Artist))
+	var res []struct {
+		TrackName    string  `json:"trackName"`
+		ArtistName   string  `json:"artistName"`
+		Duration     float64 `json:"duration"`
+		Instrumental bool    `json:"instrumental"`
+		Synced       string  `json:"syncedLyrics"`
+		Plain        string  `json:"plainLyrics"`
 	}
-	if !strings.HasPrefix(base, "https://") {
-		return nil, errors.New("lyprio base url must be https")
+	if _, err := p.Env.getJSON(ctx, "https://lrclib.net/api/search?"+v.Encode(), nil, &res); err != nil {
+		return nil, err
 	}
-	reqBody := map[string]any{"title": q.Title, "artist": q.Artist, "allSources": false}
-	if q.Album != "" {
-		reqBody["album"] = q.Album
-	}
-	if q.DurationMs > 0 {
-		reqBody["duration"] = q.DurationMs / 1000
-	}
-	if q.VideoID != "" {
-		reqBody["videoId"] = q.VideoID
-	}
-	body, _ := json.Marshal(reqBody)
-	send := func(path string) (int, http.Header, []byte, error) {
-		ts := strconv.FormatInt(time.Now().Unix(), 10)
-		mac := hmac.New(sha256.New, key)
-		mac.Write([]byte(ts + "\n" + string(body)))
-		return p.Env.do(ctx, "POST", base+path, body, map[string]string{
-			"Content-Type":       "application/json",
-			"X-Lyprio-Timestamp": ts,
-			"X-Lyprio-Signature": hex.EncodeToString(mac.Sum(nil)),
-		})
-	}
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		code, hdr, data, err := send("/v2/lyrics/search")
-		if err != nil {
-			return nil, err
-		}
-		if (code == 404 && hdr.Get("X-Lyprio-Protocol") == "") || code == 405 {
-			code, _, data, err = send("/v1/lyrics/search")
-			if err != nil {
-				return nil, err
-			}
-		}
-		var res struct {
-			Results      []lyprioResult `json:"results"`
-			Status       string         `json:"status"`
-			Complete     bool           `json:"complete"`
-			RetryAfterMs int64          `json:"retryAfterMs"`
-		}
-		_ = json.Unmarshal(data, &res)
-		switch {
-		case code == 200 && len(res.Results) > 0:
-			if l := bestLyprio(res.Results); l != nil {
-				return l, nil
-			}
-			if res.Complete {
-				return nil, ErrNotFound
-			}
-		case code == 404:
-			return nil, ErrNotFound
-		case code == 202 || code == 429 || code == 503:
-			if res.Complete {
-				return nil, ErrNotFound
-			}
-		default:
-			return nil, fmt.Errorf("lyprio http %d", code)
-		}
-		wait := time.Duration(res.RetryAfterMs) * time.Millisecond
-		if wait <= 0 {
-			wait = 2 * time.Second
-		}
-		if time.Now().Add(wait).After(deadline) {
-			return nil, ErrNotFound
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(wait):
-		}
-	}
-}
-
-func bestLyprio(rs []lyprioResult) *core.Lyrics {
-	var best *core.Lyrics
-	for _, r := range rs {
-		if strings.EqualFold(r.Format, "mlx") { // Metrolist's internal format, not supported here
+	best, bestScore := -1, 0.0
+	for i, r := range res {
+		if r.Instrumental || (r.Synced == "" && r.Plain == "") {
 			continue
 		}
-		l, err := Parse(r.Format, r.Lyrics)
-		if err != nil || len(l.Lines) == 0 {
-			continue
+		sc := MatchScore(q, r.TrackName, r.ArtistName, int64(r.Duration*1000))
+		if r.Synced != "" {
+			sc += 0.05
 		}
-		if best == nil || l.Sync > best.Sync {
-			best = l
-			best.Credit = "Lyrics via Lyprio"
-			if r.Subprovider != "" {
-				best.Credit += " (" + r.Subprovider + ")"
-			}
+		if sc > bestScore {
+			best, bestScore = i, sc
 		}
 	}
-	return best
+	if best < 0 || bestScore < minScore {
+		return nil, ErrNotFound
+	}
+	text := res[best].Synced
+	if text == "" {
+		text = res[best].Plain
+	}
+	l, err := Parse("", text)
+	if err != nil {
+		return nil, err
+	}
+	l.Credit = "Lyrics from LRCLIB"
+	return l, nil
+}
+
+// ================================================================ placeholders
+
+// instrumentalMarks are texts providers return instead of lyrics.
+var instrumentalMarks = []string{"纯音乐", "此歌曲为没有填词的纯音乐", "请您欣赏", "instrumental", "no lyrics", "lyrics not available",
+	"暂无歌词", "没有歌词", "music only"}
+
+// IsPlaceholder reports whether "lyrics" only say the song has none
+// (Kugou answers "纯音乐，请欣赏" — pure music, enjoy — for instrumentals).
+func IsPlaceholder(l *core.Lyrics) bool {
+	if l == nil || len(l.Lines) == 0 {
+		return true
+	}
+	var text []string
+	for _, ln := range l.Lines {
+		if t := strings.TrimSpace(ln.Text); t != "" {
+			text = append(text, t)
+		}
+	}
+	if len(text) == 0 {
+		return true
+	}
+	if len(text) > 3 {
+		return false
+	}
+	all := strings.ToLower(strings.Join(text, " "))
+	for _, m := range instrumentalMarks {
+		if strings.Contains(all, m) {
+			return true
+		}
+	}
+	return false
 }

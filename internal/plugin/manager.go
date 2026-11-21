@@ -229,7 +229,8 @@ type Manager struct {
 	last      *LastLyrics
 	// stMu guards the maps of State: background searches read them while
 	// the interface changes them (a concurrent map access kills the app).
-	stMu sync.RWMutex
+	stMu  sync.RWMutex
+	alias map[string]string // old id → id
 }
 
 // NewManager creates a manager. Call Register for builtins, then Load.
@@ -399,6 +400,12 @@ func (mg *Manager) add(p *Plugin) {
 		mg.order = append(mg.order, p.Manifest.ID)
 	}
 	mg.plugins[p.Manifest.ID] = p
+	if mg.alias == nil {
+		mg.alias = map[string]string{}
+	}
+	for _, a := range p.Manifest.Aliases {
+		mg.alias[a] = p.Manifest.ID
+	}
 }
 
 // depDir returns the folder of an enabled dep plugin required by m.
@@ -495,11 +502,52 @@ func (mg *Manager) Close() {
 	}
 }
 
-// Get returns a plugin by id.
+// Get returns a plugin by id (or by one of its old ids).
 func (mg *Manager) Get(id string) *Plugin {
 	mg.mu.RLock()
 	defer mg.mu.RUnlock()
-	return mg.plugins[id]
+	if p := mg.plugins[id]; p != nil {
+		return p
+	}
+	if real, ok := mg.alias[id]; ok {
+		return mg.plugins[real]
+	}
+	return nil
+}
+
+// Migrate moves settings, priorities and the enabled state stored under
+// old ids to the plugin that replaced them. prefix maps an old id to the
+// prefix its settings get in the new plugin.
+func (mg *Manager) Migrate(oldID, newID, prefix string) {
+	mg.stMu.Lock()
+	defer mg.stMu.Unlock()
+	st := mg.State
+	if old, ok := st.Settings[oldID]; ok {
+		if st.Settings[newID] == nil {
+			st.Settings[newID] = map[string]string{}
+		}
+		for k, v := range old {
+			if _, exists := st.Settings[newID][prefix+k]; !exists {
+				st.Settings[newID][prefix+k] = v
+			}
+		}
+		delete(st.Settings, oldID)
+	}
+	for c, ids := range st.Order {
+		var out []string
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if id == oldID {
+				id = newID
+			}
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+		st.Order[c] = out
+	}
+	delete(st.Disabled, oldID)
 }
 
 // All returns every plugin in load order.

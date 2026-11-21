@@ -15,13 +15,13 @@ import (
 	"meofishes/internal/core"
 )
 
-// DefaultOrder is the provider priority asked for by the project:
-// Lyprio, BetterLyrics, lrc.red, Unison, Paxsenix, Kugou.
-var DefaultOrder = []string{"lyprio", "betterlyrics", "lrcred", "unison", "paxsenix", "kugou"}
+// DefaultOrder is the provider priority: BetterLyrics, lrc.red, Unison,
+// Paxsenix, Kugou, and LRCLIB as a line-synced fallback.
+var DefaultOrder = []string{"betterlyrics", "lrcred", "unison", "paxsenix", "kugou", "lrclib"}
 
 // Builtins returns every built-in provider bound to env.
 func Builtins(env *Env) map[string]Provider {
-	ps := []Provider{Lyprio{env}, BetterLyrics{env}, LrcRed{env}, Unison{env}, Paxsenix{env}, Kugou{env}}
+	ps := []Provider{BetterLyrics{env}, LrcRed{env}, Unison{env}, Paxsenix{env}, Kugou{env}, LrcLib{env}}
 	m := map[string]Provider{}
 	for _, p := range ps {
 		m[p.ID()] = p
@@ -88,7 +88,7 @@ func (c *Chain) Find(ctx context.Context, q Query) (*core.Lyrics, []Attempt, err
 		go func(p Provider) {
 			start := time.Now()
 			l, err := p.Fetch(ctx, q)
-			if err == nil && (l == nil || len(l.Lines) == 0) {
+			if err == nil && IsPlaceholder(l) { // empty, or "instrumental, enjoy"
 				err = ErrNotFound
 			}
 			a := Attempt{Provider: p.ID(), Err: err, Took: time.Since(start)}

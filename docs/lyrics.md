@@ -8,23 +8,31 @@ first one (by priority) with **word sync** wins, otherwise the first with line
 sync, otherwise plain text. Results are cached in `~/.cache/meofishes/lyrics`
 (the ↻ button in the fullscreen player searches again without the cache).
 
-The built-in **Meo Lyrics** chains its own providers (order and keys in
+The **Built-in** plugin chains its own providers (order and keys in
 **Settings → Lyrics → Lyrics providers**):
 
 | provider | needs | notes |
 |---|---|---|
-| Lyprio | base URL + HMAC signing key from its maintainers | off until configured |
 | BetterLyrics | nothing | word sync (TTML) |
 | lrc.red | the app name, a link and a contact e-mail in the User-Agent | sent automatically |
 | Unison | name and link in the User-Agent; personal/non-commercial use | community lyrics |
 | Paxsenix | nothing for lyrics.paxsenix.org | Apple Music word sync |
 | Kugou | nothing | word sync (KRC) |
+| LRCLIB | nothing | line sync, fallback |
+
+Answers that only say a song is instrumental (Kugou's "纯音乐，请欣赏") are
+ignored, so the next provider is used.
+
+BetterLyrics only serves lyrics it already has cached to clients like
+meofishes: its browser extension gets uncached ones with a Cloudflare
+Turnstile token that only a real browser page can obtain, and meofishes does
+not try to get around that.
 
 meofishes identifies itself to these services as
 `meofishes/<version> (+https://git.5418.org/kywoosh/meofishes; mail@kywoosh.xyz)`.
 Users never have to enter contact details.
 
-Other lyrics plugins in the catalog: **LRCLIB** (line sync).
+Other lyrics plugins in the catalog: **LRCLIB** as a separate plugin.
 
 ## Formats
 
@@ -44,7 +52,10 @@ Other lyrics plugins in the catalog: **LRCLIB** (line sync).
 - Background vocals are drawn smaller under the line; duets use the opposite
   side (`-meo-opposite-align`).
 - Instrumental gaps longer than 5 s show three breathing dots.
-- Click a line to jump there.
+- Click a line to jump there. Scrolling by hand stops the automatic scroll
+  until you press **Back to the current line**.
+- `-meo-word-animation: font` switches the sung word to another font (family,
+  weight, italic, underline: `-meo-sung-*`).
 - The line being sung also appears in the left panel (`#CurrentLyric`) and
   swipes to the next one.
 - No lyrics? The fullscreen player shows a frequency visualizer instead

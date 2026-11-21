@@ -13,9 +13,14 @@ import (
 type Host struct {
 	Version   string
 	UserAgent string
-	DataDir   string // plugin storage goes to DataDir/<plugin id>
-	Client    *http.Client
-	Logf      func(plugin, format string, args ...any)
+	// Quality is the maximum audio quality the user wants: max, high,
+	// normal or low. Plugins with several qualities should respect it
+	// (scripts: app.quality, declarative: {{app.quality}}, process: "quality"
+	// in initialize).
+	Quality string
+	DataDir string // plugin storage goes to DataDir/<plugin id>
+	Client  *http.Client
+	Logf    func(plugin, format string, args ...any)
 }
 
 func (h *Host) logf(id, format string, args ...any) {

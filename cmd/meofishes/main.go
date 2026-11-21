@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -24,9 +25,11 @@ import (
 	"meofishes/internal/app"
 	"meofishes/internal/config"
 	"meofishes/internal/core"
+	"meofishes/internal/ctl"
 	"meofishes/internal/plugin"
 	"meofishes/internal/theme"
 	"meofishes/internal/ui"
+	"meofishes/internal/update"
 )
 
 // Qt must run on the process' main OS thread. Lock it before anything else
@@ -68,12 +71,29 @@ func manager() (*plugin.Manager, *config.Config) {
 }
 
 func cli(args []string) (int, bool) {
+	if code, ok := control(args); ok {
+		return code, true
+	}
 	switch args[0] {
 	case "-h", "--help", "help":
 		fmt.Println(strings.TrimSpace(`
 meofishes ` + config.Version + ` — music from plugins
 
-  meofishes                             open the app
+  meofishes                             open the app (or bring it back if it is open)
+
+Control the open app:
+  meofishes now [--json]                what is playing (and the lyric line being sung)
+  meofishes resume | pause | toggle | stop
+  meofishes next | prev
+  meofishes play "query"                search every source and play the first result
+  meofishes seek 1:30 | 90 | +10 | -10
+  meofishes volume [50 | +5 | -5]       print or change the volume
+  meofishes mute | like | unlike | shuffle | repeat [off|all|one]
+  meofishes lyrics                      the lyrics of the song playing
+  meofishes queue                       the queue
+  meofishes show | fullscreen | quit
+
+Tools:
   meofishes lyrics "Artist" "Title" [s] test the lyrics chain in the terminal
   meofishes search <plugin> <query>     test a plugin's search (and play the 1st result)
   meofishes check <plugin folder>       validate a plugin.json
@@ -81,6 +101,8 @@ meofishes ` + config.Version + ` — music from plugins
   meofishes modules                     list the Go libraries plugins can use
   meofishes types                       list the plugin types and what they allow
   meofishes setup                       install the default themes and plugins
+  meofishes update [--check|--force]    install the latest build
+  meofishes uninstall [--purge]         remove meofishes (--purge: also settings, library, caches)
   meofishes version                     print the version`))
 		return 0, true
 	case "lyrics":
@@ -178,7 +200,54 @@ meofishes ` + config.Version + ` — music from plugins
 		}
 		return 0, true
 	case "version", "--version", "-v":
-		fmt.Println("meofishes", config.Version)
+		fmt.Println("meofishes", config.Version, "("+config.Commit+")")
+		return 0, true
+	case "update":
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		r, err := update.Latest(ctx, config.UpdateRepo, config.UserAgent)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "update:", err)
+			return 1, true
+		}
+		fmt.Printf("current: %s · latest: %s (%s)\n", config.Commit, r.Short(), r.Published.Local().Format("2006-01-02 15:04"))
+		if !r.Newer(config.Commit) && !(len(args) > 1 && args[1] == "--force") {
+			fmt.Println("already up to date (use --force to reinstall)")
+			return 0, true
+		}
+		if len(args) > 1 && args[1] == "--check" {
+			fmt.Println("an update is available: meofishes update")
+			return 0, true
+		}
+		last := 0
+		err = update.Apply(ctx, r, config.UserAgent, func(done, total int64) {
+			if total > 0 && int(done*100/total) >= last+10 {
+				last = int(done * 100 / total)
+				fmt.Fprintf(os.Stderr, "\r%d%%", last)
+			}
+		})
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "update:", err)
+			return 1, true
+		}
+		fmt.Println("updated to", r.Short(), "— restart meofishes to use it")
+		return 0, true
+	case "uninstall":
+		purge := len(args) > 1 && args[1] == "--purge"
+		p := config.DefaultPaths()
+		_, _ = ctl.Send("quit")
+		removed, err := update.Uninstall(p.Config, p.Data, p.Cache, purge)
+		for _, r := range removed {
+			fmt.Println("removed", r)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "uninstall:", err)
+			return 1, true
+		}
+		if !purge {
+			fmt.Println("settings, library and plugins kept (meofishes uninstall --purge removes them too)")
+		}
 		return 0, true
 	case "types":
 		for _, t := range plugin.Types {
@@ -198,4 +267,101 @@ meofishes ` + config.Version + ` — music from plugins
 		return 0, true
 	}
 	return 0, false
+}
+
+// control sends commands to the running app (see internal/ctl).
+func control(args []string) (int, bool) {
+	cmd := args[0]
+	switch cmd {
+	case "now", "status", "resume", "pause", "toggle", "stop", "next", "prev", "previous", "back",
+		"seek", "volume", "vol", "mute", "like", "unlike", "shuffle", "repeat", "queue", "show",
+		"fullscreen", "quit":
+	case "play":
+		if len(args) > 1 && args[1] == "--help" {
+			return 0, false
+		}
+	case "lyrics":
+		if len(args) > 1 { // "Artist" "Title": the provider test below
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+	jsonOut := false
+	var rest []string
+	for _, a := range args[1:] {
+		if a == "--json" {
+			jsonOut = true
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	raw, err := ctl.Send(cmd, rest...)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "meofishes:", err)
+		if err == ctl.ErrNotRunning {
+			return 3, true
+		}
+		return 1, true
+	}
+	if jsonOut || len(raw) == 0 {
+		if len(raw) > 0 {
+			fmt.Println(string(raw))
+		}
+		return 0, true
+	}
+	switch cmd {
+	case "now", "status":
+		var s struct {
+			Playing                bool
+			Title, Artist, Album   string
+			Line                   string
+			PositionMs, DurationMs int64
+			Volume                 int
+			Liked, Shuffle         bool
+			Repeat                 string
+		}
+		_ = json.Unmarshal(raw, &s)
+		if s.Title == "" {
+			fmt.Println("nothing playing")
+			return 0, true
+		}
+		state := "▶"
+		if !s.Playing {
+			state = "⏸"
+		}
+		heart := ""
+		if s.Liked {
+			heart = " ♥"
+		}
+		fmt.Printf("%s %s — %s%s\n", state, s.Artist, s.Title, heart)
+		if s.Album != "" {
+			fmt.Printf("  %s\n", s.Album)
+		}
+		fmt.Printf("  %s / %s · volume %d%% · shuffle %v · repeat %s\n", core.FormatMs(s.PositionMs), core.FormatMs(s.DurationMs), s.Volume, s.Shuffle, s.Repeat)
+		if s.Line != "" {
+			fmt.Printf("  ♪ %s\n", s.Line)
+		}
+	case "lyrics":
+		var l struct {
+			Provider, Sync string
+			Lines          []string
+		}
+		_ = json.Unmarshal(raw, &l)
+		for _, ln := range l.Lines {
+			fmt.Println(ln)
+		}
+		fmt.Fprintf(os.Stderr, "\n(%s, %s sync)\n", l.Provider, l.Sync)
+	case "queue":
+		var lines []string
+		_ = json.Unmarshal(raw, &lines)
+		for _, ln := range lines {
+			fmt.Println(ln)
+		}
+	default:
+		var v any
+		_ = json.Unmarshal(raw, &v)
+		fmt.Println(v)
+	}
+	return 0, true
 }

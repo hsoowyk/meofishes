@@ -52,6 +52,7 @@ type Options struct {
 	Extra         []string // extra mpv arguments
 	// Wid is the native window video is drawn into (0 = no video support).
 	// Video stays off (vid=no) until SetVideo turns it on.
+	AudioFmt string // yt-dlp format for audio (quality setting)
 	Wid      uintptr
 	X11Video bool   // the app runs on X11/XWayland: use an X11 GPU context
 	VideoFmt string // yt-dlp format used while video is on
@@ -76,7 +77,8 @@ type MPV struct {
 	wait   sync.Map
 	closed atomic.Bool
 	// position interpolation
-	posAt time.Time
+	posAt    time.Time
+	audioFmt string
 	// get_property results by request id
 	dataMu sync.Mutex
 	data   map[int64]json.RawMessage
@@ -114,7 +116,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	args := []string{
 		"--idle=yes", "--vid=no", "--no-terminal", "--force-window=no",
 		"--input-ipc-server=" + sock, "--audio-display=no", "--keep-open=no",
-		"--ytdl-format=bestaudio/best", "--cache=yes",
+		"--ytdl-format=" + firstNonEmpty(opt.AudioFmt, "bestaudio/best"), "--cache=yes",
 		fmt.Sprintf("--demuxer-max-bytes=%dMiB", opt.CacheMB),
 		fmt.Sprintf("--demuxer-readahead-secs=%d", opt.ReadaheadSecs),
 		"--cache-pause-initial=no", "--cache-pause-wait=1",
@@ -143,7 +145,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	m := &MPV{cmd: cmd, sock: sock, ev: ev}
+	m := &MPV{cmd: cmd, sock: sock, ev: ev, audioFmt: opt.AudioFmt}
 	m.st.Volume = 80
 	m.st.Idle = true
 	var conn net.Conn
@@ -284,6 +286,13 @@ func (m *MPV) Load(url string, headers map[string]string) error {
 	return m.command("loadfile", url, "replace")
 }
 
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // SetVideo turns video on (in the window given to Start) or off. format is
 // the yt-dlp format for web pages while video is on.
 func (m *MPV) SetVideo(on bool, format string) error {
@@ -294,7 +303,7 @@ func (m *MPV) SetVideo(on bool, format string) error {
 		_ = m.command("set_property", "ytdl-format", format)
 		return m.command("set_property", "vid", "auto")
 	}
-	_ = m.command("set_property", "ytdl-format", "bestaudio/best")
+	_ = m.command("set_property", "ytdl-format", firstNonEmpty(m.audioFmt, "bestaudio/best"))
 	return m.command("set_property", "vid", "no")
 }
 

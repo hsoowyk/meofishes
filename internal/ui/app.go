@@ -17,6 +17,7 @@ import (
 	"meofishes/internal/app"
 	"meofishes/internal/config"
 	"meofishes/internal/core"
+	"meofishes/internal/ctl"
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
 	"meofishes/internal/netlog"
@@ -24,6 +25,7 @@ import (
 	"meofishes/internal/player"
 	"meofishes/internal/plugin"
 	"meofishes/internal/theme"
+	"meofishes/internal/update"
 )
 
 // tr translates a UI string (the English text is the key).
@@ -57,6 +59,10 @@ type UI struct {
 	streamFrom      string         // original URL before the proxy
 	streamTrack     core.Track
 	videoOn         bool
+	lastVol         float64
+	tray            *qt.QSystemTrayIcon
+	trayNow         *qt.QAction
+	quitting        bool
 	prefetched      map[string]prefetch
 	autoplayOn      bool // a recommendation request is running
 	restorePos      int64
@@ -126,6 +132,10 @@ type prefetch struct {
 
 // Run starts the application and blocks until it quits.
 func Run(assets fs.FS) int {
+	// already open? bring that window back instead of starting a second app
+	if _, err := ctl.Send("show"); err == nil {
+		return 0
+	}
 	c := app.New(assets)
 	u := &UI{core: c, cfg: c.Cfg, qIndex: -1, style: &Styler{}, nav: map[string]*NavButton{},
 		pageIndex: map[string]int{}, prefetched: map[string]prefetch{}, pageTitles: map[string]string{}}
@@ -166,13 +176,31 @@ func Run(assets fs.FS) int {
 		u.win.Show()
 	}
 	u.anim.FollowScreen(u.win.QWidget) // animations run at the screen's refresh rate
+	u.buildTray()
+	qt.QGuiApplication_SetQuitOnLastWindowClosed(false) // hiding to the tray must not quit
 	u.enterAll()
 	u.startTimers()
 	u.restoreQueue()
+	if u.cfg.Prefs.AutoUpdate {
+		singleShot(8000, func() { u.checkUpdate(false) })
+	}
 	if !u.cfg.Prefs.TutorialAsked {
 		singleShot(700, func() { u.startTour(true) })
 	}
 	c.Plugins.OnChange(func() { mainthread.Start(u.pluginsChanged) })
+	// `meofishes next`, `meofishes lyrics`… talk to us through a socket
+	if stop, err := ctl.Serve(func(cmd string, args []string) (any, error) {
+		type res struct {
+			v   any
+			err error
+		}
+		r := mainthread.Wait2(func() res { v, err := u.control(cmd, args); return res{v, err} })
+		return r.v, r.err
+	}); err == nil {
+		defer stop()
+	} else {
+		c.Log("ctl", "%v", err)
+	}
 	c.Library.OnChange(func() { mainthread.Start(u.libraryChanged) })
 
 	code := qt.QApplication_Exec()
@@ -315,7 +343,7 @@ func (u *UI) mpvOptions() player.Options {
 	pr := u.cfg.Prefs
 	o := player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
 		Normalize: pr.Normalize, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
-		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat()}
+		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat(), AudioFmt: plugin.QualityFormat(pr.AudioQuality)}
 	if u.full != nil && u.full.video != nil {
 		o.Wid = u.full.video.WinId()
 		o.X11Video = qt.QGuiApplication_PlatformName() == "xcb"
@@ -729,6 +757,9 @@ func (u *UI) playCurrent() {
 	u.cacheLeaving()
 	u.gen++
 	gen := u.gen
+	if u.player != nil && !u.state().Idle {
+		_ = u.player.Stop() // the previous song stops now, not when the next one is ready
+	}
 	track := *t
 	if u.cfg.Prefs.VideoAuto && track.VideoID != "" && u.mpv != nil && !u.videoOn {
 		u.videoOn = true
@@ -1077,6 +1108,7 @@ func (u *UI) showNowPlaying(t core.Track) {
 		l.MarkPlaying(&t)
 	}
 	u.syncLike()
+	u.syncTray()
 	if u.full != nil {
 		u.full.trackChanged(t)
 	}
@@ -1100,6 +1132,7 @@ func (u *UI) setCover(url string) {
 			if u.full != nil {
 				u.full.bg.SetTint(col, ok)
 				u.full.bg.SetImage(px)
+				u.full.bg.SetPalette(paletteColors(px, 3))
 			}
 		}
 	})
@@ -1124,7 +1157,7 @@ func (u *UI) setLyrics(l *core.Lyrics, msg string) {
 	status := msg
 	if l != nil {
 		sync := map[core.SyncType]string{core.SyncWord: tr("word sync"), core.SyncLine: tr("line sync"), core.SyncNone: tr("not synced")}[l.Sync]
-		status = l.Provider + " · " + sync
+		status = strings.Replace(l.Provider, "Built-in", tr("Built-in"), 1) + " · " + sync
 	}
 	for _, s := range u.lyricStatus {
 		s.SetText(status)
@@ -1292,4 +1325,61 @@ func (u *UI) setVideo(on bool) {
 		u.restorePos = u.state().PositionMs
 		u.playCurrent()
 	}
+}
+
+// ---------------------------------------------------------------- updates
+
+// checkUpdate looks for a new build. manual=true reports "up to date" too
+// and offers to install.
+func (u *UI) checkUpdate(manual bool) {
+	if manual {
+		u.toast(tr("Checking for updates…"))
+	}
+	var rel *update.Release
+	u.runAsync(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		var err error
+		rel, err = update.Latest(ctx, config.UpdateRepo, config.UserAgent)
+		return err
+	}, func(err error) {
+		if err != nil {
+			if manual {
+				u.toast(tr("Could not check: {error}", "error", err.Error()))
+			}
+			return
+		}
+		if !rel.Newer(config.Commit) {
+			if manual {
+				if config.Commit == "dev" {
+					u.toast(tr("This is a development build: updates are only for builds from the CI."))
+				} else {
+					u.toast(tr("meofishes is up to date"))
+				}
+			}
+			return
+		}
+		if !manual {
+			u.toast(tr("An update is available — Settings → About"))
+			return
+		}
+		msg := tr("A new build is available ({commit}, {date}). Install it now?", "commit", rel.Short(), "date", rel.Published.Local().Format("2006-01-02 15:04"))
+		if !u.confirm(tr("Update"), msg) {
+			return
+		}
+		u.toast(tr("Downloading the update…"))
+		u.runAsync(func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+			return update.Apply(ctx, rel, config.UserAgent, nil)
+		}, func(err error) {
+			if err != nil {
+				qt.QMessageBox_Warning(u.win.QWidget, tr("Update"), err.Error())
+				return
+			}
+			if u.confirm(tr("Update"), tr("Updated. Restart meofishes now?")) {
+				u.restart()
+			}
+		})
+	})
 }

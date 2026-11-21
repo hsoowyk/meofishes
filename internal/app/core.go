@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"meofishes/internal/builtin/artwork"
+	"meofishes/internal/builtin/integrated"
 	"meofishes/internal/builtin/localfiles"
 	"meofishes/internal/builtin/meolyrics"
 	"meofishes/internal/catalog"
@@ -69,19 +70,27 @@ func New(assets fs.FS) *Core {
 	i18n.Load(assets, "locales", filepath.Join(paths.Data, "locales"))
 	i18n.Set(cfg.Language)
 
-	c.Host = &plugin.Host{Version: config.Version, UserAgent: config.UserAgent, DataDir: paths.PData,
+	c.ApplyQuality()
+	c.Host = &plugin.Host{Version: config.Version, UserAgent: config.UserAgent, DataDir: paths.PData, Quality: cfg.Prefs.AudioQuality,
 		Client: &http.Client{Timeout: 25 * time.Second}, Logf: c.Log}
 	c.Plugins = plugin.NewManager(c.Host, paths.Plugins, &cfg.Plugins)
 	c.Plugins.CacheDir = filepath.Join(paths.Cache, "lyrics")
 	c.Plugins.Save = func() { _ = cfg.Save() }
-	c.Plugins.Register(plugin.Builtin{Manifest: meolyrics.Manifest, New: meolyrics.New})
-	c.Plugins.Register(plugin.Builtin{Manifest: artwork.Manifest, New: artwork.New})
-	c.Plugins.Register(plugin.Builtin{Manifest: localfiles.Manifest, New: localfiles.New})
-	if len(cfg.Plugins.Order[plugin.CapLyrics]) == 0 {
-		cfg.Plugins.Order[plugin.CapLyrics] = []string{meolyrics.ID}
+	c.Plugins.Register(plugin.Builtin{Manifest: integrated.Manifest, New: integrated.New})
+	// 0.2.0 had three built-in plugins; they are one now
+	c.Plugins.Migrate(meolyrics.ID, integrated.ID, "lyrics.")
+	c.Plugins.Migrate(artwork.ID, integrated.ID, "artwork.")
+	c.Plugins.Migrate(localfiles.ID, integrated.ID, "local.")
+	if s := cfg.Plugins.Settings[integrated.ID]; s != nil && strings.Contains(s["lyrics.order"], "lyprio") {
+		s["lyrics.order"] = "" // Lyprio was removed: back to the default order
 	}
-	if len(cfg.Plugins.Order[plugin.CapArtwork]) == 0 {
-		cfg.Plugins.Order[plugin.CapArtwork] = []string{artwork.ID}
+	if s := cfg.Plugins.Settings[integrated.ID]; s != nil && s["artwork.order"] == "itunes,deezer" {
+		s["artwork.order"] = "" // gets Piped too
+	}
+	for _, c2 := range []string{plugin.CapLyrics, plugin.CapArtwork} {
+		if len(cfg.Plugins.Order[c2]) == 0 {
+			cfg.Plugins.Order[c2] = []string{integrated.ID}
+		}
 	}
 	c.Library = library.Open(filepath.Join(paths.Data, "library.json"))
 	c.Library.KeepHistory = cfg.Prefs.KeepHistory
@@ -233,8 +242,16 @@ func (c *Core) StartProxy() {
 
 func (c *Core) proxyOptions() stream.Options {
 	pr := c.Cfg.Prefs
-	return stream.Options{ChunkSize: int64(max(64, pr.ChunkKB)) << 10, Workers: pr.Workers, Full: pr.FullDownload,
+	return stream.Options{ChunkSize: int64(max(64, pr.ChunkKB)) << 10, FirstSize: 128 << 10, Workers: pr.Workers, Full: pr.FullDownload,
 		UserAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+}
+
+// ApplyQuality sets the audio quality used by yt-dlp and given to plugins.
+func (c *Core) ApplyQuality() {
+	plugin.AudioFormat = plugin.QualityFormat(c.Cfg.Prefs.AudioQuality)
+	if c.Host != nil {
+		c.Host.Quality = c.Cfg.Prefs.AudioQuality
+	}
 }
 
 // DownloadDir is where downloaded songs go (~/Music/meofishes by default).

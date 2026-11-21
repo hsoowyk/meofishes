@@ -15,7 +15,15 @@ import (
 )
 
 // Version of the app.
-const Version = "0.2.0"
+const Version = "0.3.0"
+
+// Commit is the git commit of this build (set by the CI with -ldflags
+// "-X meofishes/internal/config.Commit=…"); "dev" for local builds.
+var Commit = "dev"
+
+// UpdateRepo is the GitHub repository whose "nightly" release has the
+// builds the updater installs.
+const UpdateRepo = "hsoowyk/meofishes"
 
 // Contact identifies the app to the services it talks to. lrc.red requires
 // the app name, a link and an e-mail in the User-Agent; Unison asks for the
@@ -120,6 +128,7 @@ type Prefs struct {
 	BgVocals       bool `json:"bgVocals"`       // show background vocals
 	LyricsCredits  bool `json:"lyricsCredits"`
 	LyricsAutoOpen bool `json:"lyricsAutoOpen"` // open the fullscreen player with lyrics on play
+	FullLyrics     bool `json:"fullLyrics"`     // lyrics panel shown in the fullscreen player
 
 	// playback & audio
 	ReplayGain     string `json:"replayGain"` // no | track | album
@@ -135,6 +144,9 @@ type Prefs struct {
 	ExtraMpvArgs   string `json:"extraMpvArgs,omitempty"`
 	PauseOnUnplug  bool   `json:"pauseOnUnplug"`  // reserved
 	StopAfterTrack bool   `json:"stopAfterTrack"` // stop when the current track ends
+
+	// AudioQuality is the maximum quality: max | high | normal | low.
+	AudioQuality string `json:"audioQuality"`
 
 	// streaming
 	Chunked      bool `json:"chunked"`      // download in parallel chunks through the local proxy
@@ -161,6 +173,14 @@ type Prefs struct {
 	VideoAuto    bool `json:"videoAuto"`    // turn video on by itself when the song has one
 	VideoX11     bool `json:"videoX11"`     // run on X11/XWayland so mpv can draw inside the window
 
+	// background
+	TrayIcon         bool `json:"trayIcon"`   // icon in the system tray
+	Background       bool `json:"background"` // closing the window keeps the music playing
+	BackgroundHinted bool `json:"backgroundHinted"`
+
+	// updates
+	AutoUpdate bool `json:"autoUpdate"` // check for a new build on start
+
 	// tutorial: asked once on the first start, can be replayed in Settings
 	TutorialAsked bool `json:"tutorialAsked"`
 
@@ -184,11 +204,11 @@ func DefaultPrefs() Prefs {
 	}
 	return Prefs{UserName: name,
 		AnimSpeed: 1, StartPage: "home", GridSize: "medium", ListCovers: true, CoverTilt: true, TiltMax: 12,
-		BgVocals: true, LyricsCredits: true,
+		BgVocals: true, LyricsCredits: true, FullLyrics: true,
 		ReplayGain: "track", CacheMB: 64, ReadaheadSecs: 30, SeekStepSecs: 10, Autoplay: true, PersistQueue: true,
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
-		AutoCache: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
+		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
 	}
 }
 

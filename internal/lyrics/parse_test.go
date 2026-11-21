@@ -73,3 +73,16 @@ func TestClock(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaceholder(t *testing.T) {
+	for _, s := range []string{"[00:00.00]纯音乐，请欣赏", "[00:01.00]Instrumental", ""} {
+		l, _ := Parse("lrc", s)
+		if !IsPlaceholder(l) {
+			t.Errorf("%q should be a placeholder", s)
+		}
+	}
+	l, _ := Parse("lrc", "[00:01.00]I've been tryna call\n[00:05.00]I've been on my own\n[00:09.00]for long enough")
+	if IsPlaceholder(l) {
+		t.Error("real lyrics flagged")
+	}
+}

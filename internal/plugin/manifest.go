@@ -148,6 +148,10 @@ type Manifest struct {
 	IconsTint *bool `json:"iconsTint,omitempty"`
 	// xtm: this process plugin implements the player protocol (replaces mpv).
 	Player bool `json:"player,omitempty"`
+
+	// Aliases are older ids of this plugin (built-in plugins that were
+	// merged): tracks and settings that use them keep working.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // Has reports whether the plugin provides type t.

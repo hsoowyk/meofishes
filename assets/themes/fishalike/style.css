@@ -394,9 +394,13 @@ QLabel[role="chip"] {
   -meo-backdrop-to: var(--wine-0);
   -meo-backdrop-dynamic: true;
   -meo-backdrop-dynamic-strength: 0.5;
-  -meo-backdrop-image-opacity: 0.55;        /* the blurred cover behind everything */
-  -meo-backdrop-image-blur: 18;             /* smaller = blurrier */
-  -meo-backdrop-image-shade: alpha(#000000, .38);
+  -meo-potion: true;                        /* the cover's 3 main colors swirling like a potion */
+  -meo-potion-speed: 1;
+  -meo-potion-fps: 30;                      /* 0 = the screen's refresh rate */
+  -meo-potion-strength: 1;
+  -meo-backdrop-image-opacity: 0;           /* blurred cover (used when potion is false) */
+  -meo-backdrop-image-blur: 18;
+  -meo-backdrop-image-shade: alpha(#000000, .42);
   -meo-open-duration: 460ms;
   -meo-open-easing: out-cubic;
   -meo-close-duration: 320ms;
@@ -404,35 +408,58 @@ QLabel[role="chip"] {
 }
 
 #FullCover {
-  -meo-radius: 18px;
+  -meo-radius: 22px;
   -meo-crossfade: 650ms;
   -meo-tilt-max: 12;                        /* degrees */
   -meo-tilt-smoothing: 0.12;                /* 0.01 slow … 1 instant */
   -meo-hover-scale: 1.03;
+  -meo-hover-blur: 22;                      /* blur of the cover behind the title (smaller = blurrier) */
+  -meo-info-color: #ffffff;
   -meo-shadow-color: alpha(#000000, .6);
   -meo-shadow-size: 30px;
   -meo-placeholder: var(--wine-3);
   -meo-placeholder-icon: alpha(var(--pink-light), .35);
 }
-#FullTitle  { font-size: 24px; font-weight: 800; }
-#FullArtist { font-size: 16px; font-weight: 600; color: var(--pink-light); }
-#FullAlbum  { font-size: 12px; color: var(--text-faint); }
+
+/* the play button next to the bar */
 #FullPlay {
-  min-width: 52px; min-height: 52px; max-width: 52px; max-height: 52px;
-  border-radius: 26px;
-  -meo-bg: var(--pink-light);
-  -meo-hover-bg: #ffffff;
-  -meo-icon-color: var(--wine-1);
-  -meo-hover-icon-color: var(--wine-0);
-  -meo-icon-size: 22px;
+  min-width: 58px; min-height: 58px; max-width: 58px; max-height: 58px;
+  border-radius: 18px;
+  -meo-radius: 18px;
+  -meo-bg: alpha(#ffffff, .16);
+  -meo-hover-bg: alpha(#ffffff, .26);
+  -meo-icon-color: #ffffff;
+  -meo-hover-icon-color: #ffffff;
+  -meo-icon-size: 24px;
+  -meo-press-scale: 0.92;
 }
-#FullLyricsStatus { color: var(--text-faint); font-size: 11px; }
+
+/* the bar with everything else */
+#FullBar {
+  background: alpha(#ffffff, .10);
+  border: 1px solid alpha(#ffffff, .12);
+  border-radius: 18px;
+  min-height: 58px;
+}
+#FullBar QPushButton[role="control"] {
+  -meo-icon-color: alpha(#ffffff, .78);
+  -meo-hover-icon-color: #ffffff;
+  -meo-active-icon-color: var(--pink-light);
+  -meo-hover-bg: alpha(#ffffff, .12);
+}
+#FullLyricsStatus { color: alpha(#ffffff, .5); font-size: 11px; }
 #FullVideo { background: #000000; border-radius: 12px; }
 
 /* ---------------------------------------------------------------- lyrics */
 
 #FullLyrics {
   -meo-font-family: var(--font);
+  -meo-back-bg: alpha(#ffffff, .92);            /* "back to the current line" button */
+  -meo-back-color: var(--wine-1);
+  -meo-sung-font-family: var(--font);           /* word animation "font": the sung word's font */
+  -meo-sung-font-weight: 900;
+  -meo-sung-italic: false;
+  -meo-sung-underline: false;
   -meo-font-size: 36px;
   -meo-font-weight: 800;
   -meo-line-spacing: 22px;
@@ -441,7 +468,7 @@ QLabel[role="chip"] {
   -meo-past-color: alpha(var(--text), .42);     /* lines already sung */
   -meo-active-color: var(--text);               /* sung part of the active line */
   -meo-upcoming-color: alpha(var(--text), .38); /* unsung part of the active line */
-  -meo-word-animation: fill;                    /* fill | fade | bounce | glow | none (word-synced) */
+  -meo-word-animation: fill;                    /* fill | fade | bounce | glow | font | none (word-synced) */
   -meo-line-animation: fade;                    /* fade | none (line-synced: whole line at once) */
   -meo-glow-color: alpha(var(--pink-light), .55);
   -meo-glow-radius: 3;                          /* 0 disables the glow */

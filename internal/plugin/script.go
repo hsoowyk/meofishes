@@ -76,7 +76,12 @@ func (s *script) boot() error {
 	_ = console.Set("warn", logf("warn"))
 	_ = console.Set("error", logf("error"))
 	_ = rt.Set("console", console)
-	_ = rt.Set("app", map[string]any{"version": s.host.Version, "userAgent": s.host.UserAgent, "plugin": s.m.ID})
+	app := rt.NewObject()
+	_ = app.Set("version", s.host.Version)
+	_ = app.Set("userAgent", s.host.UserAgent)
+	_ = app.Set("plugin", s.m.ID)
+	_ = app.DefineAccessorProperty("quality", rt.ToValue(func() string { return s.host.Quality }), nil, goja.FLAG_FALSE, goja.FLAG_TRUE)
+	_ = rt.Set("app", app)
 	_ = rt.Set("settings", rt.NewDynamicObject(settingsObj{s.settings, rt}))
 
 	var require func(name string) (goja.Value, error)

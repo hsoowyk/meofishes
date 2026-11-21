@@ -333,6 +333,99 @@ type Backdrop struct {
 	cache    *qt.QPixmap
 	dirty    bool
 	onResize []func()
+	// potion: the cover's main colors swirling (#FullPlayer)
+	palette  []theme.Color
+	potionT0 time.Time
+	potionOn bool
+	small    *qt.QPixmap
+}
+
+// SetPalette gives the potion its colors (from the cover) and starts it.
+func (b *Backdrop) SetPalette(cs []theme.Color) {
+	b.palette = cs
+	b.startPotion()
+	b.invalidate()
+}
+
+// startPotion animates the potion while the backdrop is visible.
+// Props: -meo-potion (true/false), -meo-potion-speed (1), -meo-potion-fps
+// (30; 0 = the screen's refresh rate), -meo-potion-strength (0..1).
+func (b *Backdrop) startPotion() {
+	p := b.props()
+	if !p.Bool("potion", false) || len(b.palette) == 0 || b.u.cfg.Prefs.ReduceMotion {
+		b.potionOn = false
+		return
+	}
+	if b.potionOn {
+		return
+	}
+	b.potionOn = true
+	if b.potionT0.IsZero() {
+		b.potionT0 = time.Now()
+	}
+	fps := p.Num("potion-fps", 30)
+	last := time.Time{}
+	b.u.anim.Ticker([2]any{b, "potion"}, func(now time.Time) bool {
+		if !b.IsVisible() {
+			b.potionOn = false
+			return false
+		}
+		if fps <= 0 || now.Sub(last) >= time.Duration(float64(time.Second)/fps) {
+			last = now
+			b.invalidate()
+		}
+		return b.potionOn
+	})
+}
+
+// renderPotion paints the swirling colors into a tiny pixmap and scales it
+// up (the upscale is the blur, and it is cheap).
+func (b *Backdrop) renderPotion(p *qt.QPainter, w, h float64) bool {
+	pr := b.props()
+	if !pr.Bool("potion", false) || len(b.palette) == 0 {
+		return false
+	}
+	const sw, sh = 64, 40
+	if b.small == nil {
+		b.small = qt.NewQPixmap2(sw, sh)
+	}
+	t := time.Since(b.potionT0).Seconds() * pr.Num("potion-speed", 1)
+	if b.u.cfg.Prefs.ReduceMotion {
+		t = 0
+	}
+	sp := qt.NewQPainter2(b.small.QPaintDevice)
+	sp.SetRenderHint(qt.QPainter__Antialiasing)
+	base := theme.Mix(b.palette[0], theme.Color{A: 1}, 0.55)
+	col := qc(base)
+	sp.FillRect5(0, 0, sw, sh, col)
+	col.Delete()
+	sp.SetCompositionMode(qt.QPainter__CompositionMode_Screen)
+	for i, c := range b.palette {
+		fi := float64(i)
+		x := sw * (0.5 + 0.38*math.Sin(t*(0.11+0.04*fi)+fi*2.1))
+		y := sh * (0.5 + 0.36*math.Cos(t*(0.09+0.05*fi)+fi*1.3))
+		r := sw * (0.55 + 0.12*math.Sin(t*0.07+fi))
+		rg := qt.NewQRadialGradient3(x, y, r, x, y)
+		c0, c1 := qc(withAlpha(c, 0.85)), qc(withAlpha(c, 0))
+		rg.SetColorAt(0, c0)
+		rg.SetColorAt(1, c1)
+		br := qt.NewQBrush10(rg.QGradient)
+		sp.FillRect2(0, 0, sw, sh, br)
+		br.Delete()
+		c0.Delete()
+		c1.Delete()
+		rg.Delete()
+	}
+	sp.End()
+	sp.Delete()
+	dst := rectF(0, 0, w, h)
+	src := rectF(0, 0, sw, sh)
+	p.SetOpacity(pr.Num("potion-strength", 1))
+	p.DrawPixmap(dst, b.small, src)
+	p.SetOpacity(1)
+	dst.Delete()
+	src.Delete()
+	return true
 }
 
 func (u *UI) backdrop(name string) *Backdrop {
@@ -460,6 +553,15 @@ func (b *Backdrop) render(p *qt.QPainter, w, h float64) {
 		t.A = 1
 		from = theme.Mix(from, darkenFor(t, from), k)
 		to = theme.Mix(to, darkenFor(t, to), k*0.6)
+	}
+	if b.renderPotion(p, w, h) {
+		shade := pr.Color("backdrop-image-shade", theme.Color{A: 0.35})
+		col := qc(shade)
+		r := rectF(0, 0, w, h)
+		p.FillRect4(r, col)
+		r.Delete()
+		col.Delete()
+		return
 	}
 	ang := pr.Num("backdrop-angle", 160) * math.Pi / 180
 	cx, cy := w/2, h/2

@@ -432,7 +432,10 @@ func (sp *settingsPage) appearance(s *sb) {
 	s.styleToggle(tr("Color from the album cover"), tr("The background slowly takes the color of the song playing."), "#Root|-meo-backdrop-dynamic", true)
 	s.styleNumber(tr("Strength of the cover color"), "", "#Root|-meo-backdrop-dynamic-strength", "", 0, 100, 0.38, 100)
 	s.styleNumber(tr("Breathing light"), tr("Period of the soft pulsing light; 0 turns it off."), "#Root|-meo-backdrop-glow-pulse", "ms", 0, 30000, 0, 1)
-	s.styleNumber(tr("Blurred cover in the fullscreen player"), tr("Opacity of the cover behind the fullscreen player."), "#FullPlayer|-meo-backdrop-image-opacity", "", 0, 100, 0.55, 100)
+	s.styleToggle(tr("Potion background in the fullscreen player"), tr("The cover’s three main colors swirl and mix behind the player."), "#FullPlayer|-meo-potion", true)
+	s.styleNumber(tr("Potion speed"), "", "#FullPlayer|-meo-potion-speed", "", 10, 500, 1, 100)
+	s.styleNumber(tr("Potion frames per second"), tr("0 = your screen’s refresh rate."), "#FullPlayer|-meo-potion-fps", "", 0, 240, 30, 1)
+	s.styleNumber(tr("Blurred cover in the fullscreen player"), tr("Opacity of the cover behind the fullscreen player (when the potion is off)."), "#FullPlayer|-meo-backdrop-image-opacity", "", 0, 100, 0, 100)
 	s.text(tr("Your name"), tr("Shown in the greeting on the home page."), u.cfg.Prefs.UserName, "", func(v string) { u.cfg.Prefs.UserName = v })
 }
 
@@ -486,7 +489,12 @@ func (sp *settingsPage) lyrics(s *sb) {
 
 	s.section(tr("Animation"))
 	s.styleChoice(tr("Word-synced lyrics"), tr("How each word lights up while it is sung."), sel+"-meo-word-animation",
-		[][2]string{{"fill", tr("Fill (gradient)")}, {"fade", tr("Fade in")}, {"bounce", tr("Bounce")}, {"glow", tr("Glow")}, {"none", tr("None")}}, "fill")
+		[][2]string{{"fill", tr("Fill (gradient)")}, {"fade", tr("Fade in")}, {"bounce", tr("Bounce")}, {"glow", tr("Glow")}, {"font", tr("Font change")}, {"none", tr("None")}}, "fill")
+	s.styleFont(tr("Font of the sung word"), sel+"-meo-sung-font-family")
+	s.styleChoice(tr("Weight of the sung word"), tr("For “Font change”."), sel+"-meo-sung-font-weight",
+		[][2]string{{"400", tr("Regular")}, {"600", tr("Semibold")}, {"700", tr("Bold")}, {"800", tr("Extra bold")}, {"900", tr("Black")}}, "900")
+	s.styleToggle(tr("Sung word in italic"), "", sel+"-meo-sung-italic", false)
+	s.styleToggle(tr("Sung word underlined"), "", sel+"-meo-sung-underline", false)
 	s.styleChoice(tr("Line-synced lyrics"), tr("Line-synced lyrics light up as a whole line, never word by word."), sel+"-meo-line-animation",
 		[][2]string{{"fade", tr("Fade in")}, {"none", tr("None")}}, "fade")
 	s.styleNumber(tr("Glow"), tr("0 turns it off."), sel+"-meo-glow-radius", "px", 0, 12, 3, 1)
@@ -499,8 +507,8 @@ func (sp *settingsPage) lyrics(s *sb) {
 	s.section(tr("Sync"))
 	s.number(tr("Lyrics offset"), tr("Positive shows the lyrics later, negative earlier."), -5000, 5000, u.cfg.Prefs.LyricsOffsetMs, "ms",
 		func(v int) { u.cfg.Prefs.LyricsOffsetMs = v })
-	s.button(tr("Lyrics providers"), tr("Order and keys of the Meo Lyrics providers (Lyprio, BetterLyrics, lrc.red, Unison, Paxsenix, Kugou)."), tr("Configure"), func() {
-		if p := u.core.Plugins.Get("meo-lyrics"); p != nil {
+	s.button(tr("Lyrics providers"), tr("Order and keys of the built-in lyrics providers (BetterLyrics, lrc.red, Unison, Paxsenix, Kugou, LRCLIB)."), tr("Configure"), func() {
+		if p := u.core.Plugins.Get("builtin"); p != nil {
 			u.pluginSettings(p, nil)
 		}
 	})
@@ -509,6 +517,13 @@ func (sp *settingsPage) lyrics(s *sb) {
 func (sp *settingsPage) playback(s *sb) {
 	u := sp.u
 	s.section(tr("Behavior"))
+	s.toggle(tr("Icon in the system tray"), tr("Next to the clock, with play/pause, next and quit."), u.cfg.Prefs.TrayIcon, func(on bool) {
+		u.cfg.Prefs.TrayIcon = on
+		if u.tray != nil {
+			u.tray.SetVisible(on)
+		}
+	})
+	s.toggle(tr("Keep playing when the window is closed"), tr("Closing the window hides it in the tray; quit from the tray icon."), u.cfg.Prefs.Background, func(on bool) { u.cfg.Prefs.Background = on })
 	s.toggle(tr("Autoplay"), tr("When the queue ends, keep playing similar songs."), u.cfg.Prefs.Autoplay, func(on bool) { u.cfg.Prefs.Autoplay = on })
 	s.toggle(tr("Stop after the current song"), "", u.cfg.Prefs.StopAfterTrack, func(on bool) { u.cfg.Prefs.StopAfterTrack = on })
 	s.toggle(tr("Remember the queue"), tr("Restore the queue when the app opens."), u.cfg.Prefs.PersistQueue, func(on bool) { u.cfg.Prefs.PersistQueue = on })
@@ -516,6 +531,14 @@ func (sp *settingsPage) playback(s *sb) {
 	s.number(tr("Seek step"), tr("Shift+← / Shift+→"), 1, 60, u.cfg.Prefs.SeekStepSecs, "s", func(v int) { u.cfg.Prefs.SeekStepSecs = v })
 
 	s.section(tr("Audio"))
+	s.choice(tr("Maximum quality"), tr("The best a source may send. Lossless sources stay lossless on Max; lower levels save data."),
+		[][2]string{{"max", tr("Max (lossless when available)")}, {"high", tr("High (~192 kbps)")}, {"normal", tr("Normal (~128 kbps)")}, {"low", tr("Data saver (~64 kbps)")}},
+		u.cfg.Prefs.AudioQuality, func(v string) {
+			u.cfg.Prefs.AudioQuality = v
+			u.core.ApplyQuality()
+			u.prefetched = map[string]prefetch{}
+			u.restartPlayer()
+		})
 	s.note(tr("Audio changes restart the player (the song continues where it was)."))
 	s.choice(tr("Volume normalization (ReplayGain)"), "", [][2]string{{"no", tr("Off")}, {"track", tr("Per song")}, {"album", tr("Per album")}},
 		u.cfg.Prefs.ReplayGain, func(v string) { u.cfg.Prefs.ReplayGain = v; u.restartPlayer() })
@@ -777,7 +800,10 @@ func (sp *settingsPage) developer(s *sb) {
 
 func (sp *settingsPage) about(s *sb) {
 	u := sp.u
-	s.row("meofishes "+config.Version, tr("Music from plugins."), label("", "", "").QWidget)
+	s.row("meofishes "+config.Version, tr("Music from plugins.")+" · "+config.Commit, label("", "", "").QWidget)
+	s.section(tr("Updates"))
+	s.toggle(tr("Check for updates on start"), "", u.cfg.Prefs.AutoUpdate, func(on bool) { u.cfg.Prefs.AutoUpdate = on })
+	s.button(tr("Update"), tr("Installs the latest build of meofishes."), tr("Check now"), func() { u.checkUpdate(true) })
 	s.button(tr("Tutorial"), tr("A quick tour of the app."), tr("Show the tutorial"), func() { u.startTour(false) })
 	s.button(tr("Project page"), config.ContactURL, tr("Open"), func() {
 		url := qt.NewQUrl3(config.ContactURL)

@@ -5,7 +5,7 @@
    "kind": "theme",
    "id": "fishalike",
    "name": "Fishalike",
-   "version": "2.0.1",
+   "version": "2.1.0",
    "author": "meofishes",
    "description": "The default theme: a darkened light red with pink touches.",
    "bundled": "themes/fishalike",

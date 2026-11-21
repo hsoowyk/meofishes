@@ -9,19 +9,22 @@ import (
 	"meofishes/internal/core"
 )
 
-// FullPlayer is the fullscreen player that covers the window: blurred cover
-// background, the tilting cover, controls, and the lyrics (or the frequency
-// visualizer when the song has no lyrics).
+// FullPlayer is the fullscreen player. Minimal: the tilting cover in the
+// middle (hover shows the title and artist over a blurred cover), the play
+// button and a bar with everything else under it, and a side panel with the
+// lyrics (or the visualizer, or the video) that can be shown or hidden.
 type FullPlayer struct {
 	*qt.QWidget
 	u      *UI
 	bg     *Backdrop
 	cover  *TiltCover
+	side   *qt.QWidget // lyrics panel
 	right  *qt.QStackedWidget
 	lyrics *LyricsView
 	viz    *Visualizer
 	video  *qt.QWidget // native window mpv draws video into
 	vidBtn *IconButton
+	lyrBtn *IconButton
 	status *qt.QLabel
 	vizFor string // stream URL the visualizer analyzes
 	open   bool
@@ -33,9 +36,9 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	f.QWidget = f.bg.QWidget
 	f.SetParent(parent)
 	f.Hide()
-	root := vbox(f.QWidget, []int{28, 18, 28, 24}, 10)
+	root := vbox(f.QWidget, []int{24, 16, 24, 24}, 10)
 
-	// top row
+	// top row: close … video, fullscreen window
 	top := qt.NewQHBoxLayout2()
 	down := u.iconButton("FullClose", "chevron-down", tr("Close (Esc)"))
 	down.OnClicked(u.closeFull)
@@ -43,7 +46,6 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	top.AddStretch()
 	f.vidBtn = u.iconButton("FullVideo", "video", tr("Show the video (when the song has one)"))
 	f.vidBtn.OnClicked(func() { u.setVideo(!u.videoOn) })
-	top.AddWidget(f.vidBtn.QWidget)
 	fs := u.iconButton("FullWindow", "fullscreen", tr("Fullscreen window (F11)"))
 	fs.OnClicked(func() {
 		if u.win.IsFullScreen() {
@@ -52,51 +54,93 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 			u.win.ShowFullScreen()
 		}
 	})
+	top.AddWidget(f.vidBtn.QWidget)
 	top.AddWidget(fs.QWidget)
 	root.AddLayout(top.QLayout)
 
 	body := qt.NewQHBoxLayout2()
-	body.SetSpacing(48)
+	body.SetSpacing(56)
+	body.AddStretch()
 
-	// left: cover + info + controls
-	left := qt.NewQWidget2()
-	left.SetObjectName("FullLeft")
-	left.SetMaximumWidth(560)
-	lb := vbox(left, nil, 8)
+	// center column: cover, then play + the bar
+	center := qt.NewQWidget2()
+	center.SetObjectName("FullCenter")
+	cb := vbox(center, nil, 14)
+	cb.AddStretch()
 	f.cover = u.tiltCover("FullCover")
-	f.cover.SetMinimumSize2(260, 260)
+	f.cover.ShowInfo = true
+	f.cover.SetMinimumSize2(240, 240)
+	f.cover.SetMaximumSize2(560, 560)
 	u.covers = append(u.covers, f.cover.CoverView)
-	lb.AddWidget2(f.cover.QWidget, 1)
-	info := qt.NewQHBoxLayout2()
-	tv := qt.NewQVBoxLayout2()
-	tv.SetSpacing(2)
-	t := label("", "FullTitle", "")
-	t.SetWordWrap(true)
-	a := label("", "FullArtist", "")
-	al := label("", "FullAlbum", "")
-	u.titleLbls = append(u.titleLbls, t)
-	u.artistLbls = append(u.artistLbls, a)
-	u.albumLbls = append(u.albumLbls, al)
-	tv.AddWidget(t.QWidget)
-	tv.AddWidget(a.QWidget)
-	tv.AddWidget(al.QWidget)
-	info.AddLayout2(tv.QLayout, 1)
-	info.AddWidget(u.likeButton("FullLike").QWidget)
-	lb.AddLayout(info.QLayout)
-	lb.AddLayout(u.seekRow("Full").QLayout)
-	ctr := u.transport("Full")
-	ctr.InsertStretch(0)
-	ctr.AddStretch()
-	lb.AddLayout(ctr.QLayout)
-	vr := u.volumeRow("Full")
-	vr.InsertStretch(0)
-	vr.AddStretch()
-	lb.AddLayout(vr.QLayout)
-	body.AddWidget2(left, 4)
+	cb.AddWidget3(f.cover.QWidget, 0, qt.AlignHCenter)
 
-	// right: lyrics or visualizer
-	rw := qt.NewQWidget2()
-	rb := vbox(rw, nil, 6)
+	controls := qt.NewQHBoxLayout2()
+	controls.SetSpacing(10)
+	play := u.iconButton("FullPlay", "play", tr("Play / pause (Ctrl+Space)"))
+	play.OnClicked(u.TogglePlay)
+	u.playBtns = append(u.playBtns, play)
+	controls.AddWidget(play.QWidget)
+
+	bar := frame("FullBar")
+	bb := hbox(bar.QWidget, []int{8, 4, 8, 4}, 2)
+	add := func(name, icon, tip string, fn func()) *IconButton {
+		b := u.iconButton(name, icon, tip)
+		b.OnClicked(fn)
+		bb.AddWidget(b.QWidget)
+		return b
+	}
+	add("FullPrev", "prev", tr("Previous (Ctrl+←)"), u.Prev)
+	add("FullNext", "next", tr("Next (Ctrl+→)"), func() { u.Next(true) })
+	sh := add("FullShuffle", "shuffle", tr("Shuffle"), u.toggleShuffle)
+	rep := add("FullRepeat", "repeat", tr("Repeat"), u.cycleRepeat)
+	u.shuffleBtns = append(u.shuffleBtns, sh)
+	u.repeatBtns = append(u.repeatBtns, rep)
+	sh.SetActive(u.cfg.Shuffle)
+	add("FullQueue", "queue", tr("Queue"), func() { u.closeFull(); u.goPage("queue") })
+	f.lyrBtn = add("FullLyricsToggle", "lyrics", tr("Show or hide the lyrics"), func() {
+		u.cfg.Prefs.FullLyrics = !u.cfg.Prefs.FullLyrics
+		_ = u.cfg.Save()
+		f.syncSide()
+	})
+	add("FullArtist", "search", tr("Artist"), func() {
+		if cur := u.current(); cur != nil && cur.Artist != "" {
+			u.closeFull()
+			u.search.box.SetText(cur.Artist)
+			u.goPage("search")
+			u.doSearch(u.search)
+		}
+	})
+	bb.AddWidget(u.likeButton("FullLike").QWidget)
+	vol := add("FullVolumeIcon", "volume", tr("Volume: click to mute, scroll to change"), func() {
+		if u.cfg.Volume > 0 {
+			u.lastVol = u.cfg.Volume
+			u.setVolume(0)
+		} else {
+			u.setVolume(max(u.lastVol, 10))
+		}
+	})
+	vol.OnWheelEvent(func(super func(*qt.QWheelEvent), e *qt.QWheelEvent) {
+		d := e.AngleDelta()
+		u.setVolume(u.cfg.Volume + float64(d.Y())/120*5)
+		_ = u.cfg.Save()
+	})
+	u.volBtns = append(u.volBtns, vol)
+	add("FullMore", "more", tr("More"), func() {
+		if cur := u.current(); cur != nil {
+			u.trackMenuFor([]core.Track{*cur}, 0, u.PlayList, nil)
+		}
+	})
+	controls.AddWidget2(bar.QWidget, 1)
+	cb.AddLayout(controls.QLayout)
+	cb.AddLayout(u.seekRow("Full").QLayout)
+	cb.AddStretch()
+	center.SetMaximumWidth(600)
+	body.AddWidget2(center, 5)
+
+	// side panel: lyrics, visualizer or video
+	f.side = qt.NewQWidget2()
+	f.side.SetObjectName("FullSide")
+	rb := vbox(f.side, nil, 6)
 	f.right = qt.NewQStackedWidget2()
 	f.right.SetObjectName("FullRight")
 	f.lyrics = u.lyricsView("FullLyrics")
@@ -122,7 +166,8 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	retry.OnClicked(u.retryLyrics)
 	row.AddWidget(retry.QWidget)
 	rb.AddLayout(row.QLayout)
-	body.AddWidget2(rw, 6)
+	body.AddWidget2(f.side, 6)
+	body.AddStretch()
 	root.AddLayout2(body.QLayout, 1)
 
 	f.OnKeyPressEvent(func(super func(*qt.QKeyEvent), e *qt.QKeyEvent) {
@@ -132,7 +177,18 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 		}
 		super(e)
 	})
+	f.syncSide()
 	return f
+}
+
+// syncSide shows or hides the lyrics panel (always shown for video).
+func (f *FullPlayer) syncSide() {
+	show := f.u.cfg.Prefs.FullLyrics || f.u.videoOn
+	f.side.SetVisible(show)
+	f.lyrBtn.SetActive(f.u.cfg.Prefs.FullLyrics)
+	if show {
+		f.syncRight()
+	}
 }
 
 func (u *UI) toggleFull() {
@@ -156,6 +212,7 @@ func (u *UI) openFull() {
 	u.toastW.Raise()
 	f.SetFocus()
 	f.syncRight()
+	singleShot(30, f.bg.startPotion)
 	playing := !u.state().Paused && !u.state().Idle
 	singleShot(0, func() {
 		for _, lv := range u.lyricViews {
@@ -188,6 +245,7 @@ func (u *UI) closeFull() {
 
 // trackChanged is called for every new track.
 func (f *FullPlayer) trackChanged(t core.Track) {
+	f.cover.SetInfo(t.Title, t.Artist)
 	f.viz.Stop()
 	f.vizFor = ""
 	if t.Cover == "" {
@@ -203,7 +261,7 @@ func (f *FullPlayer) lyricsChanged(l *core.Lyrics) {
 // syncVideo shows the video area while video is on.
 func (f *FullPlayer) syncVideo() {
 	f.vidBtn.SetActive(f.u.videoOn)
-	f.syncRight()
+	f.syncSide()
 }
 
 func (f *FullPlayer) syncRight() {

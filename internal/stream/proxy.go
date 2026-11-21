@@ -27,6 +27,7 @@ import (
 // Options tune the proxy.
 type Options struct {
 	ChunkSize  int64 // bytes per range request (default 1 MiB)
+	FirstSize  int64 // size of the first part, small so playback starts at once (default 128 KiB)
 	Workers    int   // parallel requests per track (default 4)
 	Ahead      int   // chunks kept ahead of the player when Full is false (default 8)
 	Full       bool  // download the whole track in the background
@@ -48,6 +49,8 @@ type Proxy struct {
 type entry struct {
 	id, url  string
 	headers  map[string]string
+	first    int64 // part sizes, fixed when registered
+	chunk    int64
 	created  time.Time
 	lastUsed time.Time
 
@@ -72,6 +75,9 @@ type entry struct {
 func New(opt Options) (*Proxy, error) {
 	if opt.ChunkSize <= 0 {
 		opt.ChunkSize = 1 << 20
+	}
+	if opt.FirstSize <= 0 || opt.FirstSize > opt.ChunkSize {
+		opt.FirstSize = min(128<<10, opt.ChunkSize)
 	}
 	if opt.Workers <= 0 {
 		opt.Workers = 4
@@ -103,6 +109,9 @@ func (p *Proxy) SetOptions(o Options) {
 	defer p.mu.Unlock()
 	if o.ChunkSize <= 0 {
 		o.ChunkSize = p.opt.ChunkSize
+	}
+	if o.FirstSize <= 0 || o.FirstSize > o.ChunkSize {
+		o.FirstSize = min(128<<10, o.ChunkSize)
 	}
 	if o.Workers <= 0 {
 		o.Workers = p.opt.Workers
@@ -140,6 +149,7 @@ func (p *Proxy) Register(url string, headers map[string]string) string {
 	defer p.mu.Unlock()
 	if _, ok := p.entries[id]; !ok {
 		e := &entry{id: id, url: url, headers: headers, created: time.Now(), lastUsed: time.Now(),
+			first: p.opt.FirstSize, chunk: p.opt.ChunkSize,
 			chunks: map[int64][]byte{}, inflight: map[int64]bool{}, failed: map[int64]int{}, size: -1}
 		e.cond = sync.NewCond(&e.mu)
 		p.entries[id] = e
@@ -233,7 +243,7 @@ func (p *Proxy) probe(e *entry) error {
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", p.opt.ChunkSize-1))
+		req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", e.first-1))
 		resp, err := p.client.Do(req)
 		if err != nil {
 			return err
@@ -289,7 +299,31 @@ func parseTotal(cr string) int64 {
 	return n
 }
 
-func (p *Proxy) nChunks(e *entry) int64 { return (e.size + p.opt.ChunkSize - 1) / p.opt.ChunkSize }
+// Parts: part 0 is FirstSize bytes (playback starts as soon as it arrives),
+// the others ChunkSize bytes.
+func (p *Proxy) nChunks(e *entry) int64 {
+	if e.size <= e.first {
+		return 1
+	}
+	return 1 + (e.size-e.first+e.chunk-1)/e.chunk
+}
+
+// bounds returns the first and last byte of part i.
+func (p *Proxy) bounds(e *entry, i int64) (start, end int64) {
+	if i == 0 {
+		return 0, min(e.first, e.size) - 1
+	}
+	start = e.first + (i-1)*e.chunk
+	return start, min(start+e.chunk, e.size) - 1
+}
+
+// partOf returns the part that holds byte off.
+func (p *Proxy) partOf(e *entry, off int64) int64 {
+	if off < e.first {
+		return 0
+	}
+	return 1 + (off-e.first)/e.chunk
+}
 
 // next picks the chunk a worker should download (e.mu held), or -1.
 func (p *Proxy) next(e *entry) int64 {
@@ -358,8 +392,7 @@ func (p *Proxy) worker(e *entry) {
 }
 
 func (p *Proxy) fetch(e *entry, i int64) ([]byte, error) {
-	start := i * p.opt.ChunkSize
-	end := min(start+p.opt.ChunkSize, e.size) - 1
+	start, end := p.bounds(e, i)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	req, err := p.newReq(ctx, e, "GET")
@@ -431,20 +464,23 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for off < size {
-		i := off / p.opt.ChunkSize
+		i := p.partOf(e, off)
 		e.mu.Lock()
 		e.want = i
+		start, end := p.bounds(e, i)
 		e.mu.Unlock()
 		p.kick(e)
 		data, err := p.wait(e, i, r.Context())
 		if err != nil {
 			return
 		}
-		from := off - i*p.opt.ChunkSize
-		if _, err := w.Write(data[from:]); err != nil {
+		if _, err := w.Write(data[off-start:]); err != nil {
 			return
 		}
-		off = (i + 1) * p.opt.ChunkSize
+		if f, ok := w.(http.Flusher); ok && i == 0 {
+			f.Flush() // the player can start right away
+		}
+		off = end + 1
 	}
 }
 

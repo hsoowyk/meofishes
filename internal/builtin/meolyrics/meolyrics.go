@@ -1,6 +1,6 @@
-// Package meolyrics is the default lyrics plugin. It chains the built-in
-// providers in priority order: Lyprio, BetterLyrics, lrc.red, Unison,
-// Paxsenix, Kugou.
+// Package meolyrics chains the built-in lyrics providers in priority order:
+// BetterLyrics, lrc.red, Unison, Paxsenix, Kugou, LRCLIB. It is part of the
+// "Built-in" plugin (internal/builtin/integrated).
 package meolyrics
 
 import (
@@ -22,14 +22,12 @@ var Manifest = plugin.Manifest{
 	Name:        "Meo Lyrics",
 	Version:     "1.0.0",
 	Author:      "meofishes",
-	Description: "Word-synced lyrics. Order: Lyprio → BetterLyrics → lrc.red → Unison → Paxsenix → Kugou. The first provider with word sync wins.",
+	Description: "Word-synced lyrics. Order: BetterLyrics → lrc.red → Unison → Paxsenix → Kugou → LRCLIB. The first provider with word sync wins.",
 	Types:       []string{plugin.TypeFnt},
 	Runtime:     plugin.RuntimeBuiltin,
 	Settings: []plugin.Setting{
 		{Key: "order", Label: "Provider order", Type: "list", Default: strings.Join(lyrics.DefaultOrder, ","),
 			Description: "Comma-separated IDs. Remove an ID to disable that provider."},
-		{Key: "lyprio.baseUrl", Label: "Lyprio: base URL", Description: "Lyprio is a signed API. Ask its maintainers for the URL and the key."},
-		{Key: "lyprio.signingKey", Label: "Lyprio: signing key (base64, 32 bytes)", Type: "password"},
 		{Key: "betterlyrics.apiKey", Label: "BetterLyrics: X-API-Key (optional)", Type: "password",
 			Description: "Not needed today; only if the API starts requiring a key for uncached lookups."},
 		{Key: "paxsenix.apiKey", Label: "Paxsenix: key (optional)", Type: "password"},
@@ -82,6 +80,6 @@ func (p *impl) Lyrics(ctx context.Context, q lyrics.Query) (*core.Lyrics, error)
 	if err != nil {
 		return nil, err
 	}
-	l.Provider = l.Provider + " (Meo Lyrics)"
+	l.Provider = l.Provider + " · Built-in"
 	return l, nil
 }

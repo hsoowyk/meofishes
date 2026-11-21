@@ -224,7 +224,11 @@ func (pp *pluginsPage) pluginCard(p *plugin.Plugin) *qt.QWidget {
 	f, b := card(enabled && p.Err == nil)
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(8)
-	top.AddWidget(label(m.Name, "", "card-title").QWidget)
+	name := m.Name
+	if p.Builtin {
+		name = tr(m.Name) // "Built-in"
+	}
+	top.AddWidget(label(name, "", "card-title").QWidget)
 	for _, t := range m.Types {
 		top.AddWidget(typeChip(t).QWidget)
 	}

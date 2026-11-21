@@ -35,6 +35,7 @@ type LyricsView struct {
 	scrollT0   time.Time
 	active     int
 	manualTill time.Time
+	backBtn    [4]float64 // "back to the current line" button (x, y, w, h)
 	hoverLine  int
 	// per-line scale animation
 	lineScale []float64
@@ -66,6 +67,8 @@ type layLine struct {
 type lyrFonts struct {
 	main, bg      *qt.QFont
 	mainFM, bgFM  *qt.QFontMetricsF
+	sung          *qt.QFont // word animation "font": the font of sung words
+	sungFM        *qt.QFontMetricsF
 	rowH, bgRowH  float64
 	ascent, bgAsc float64
 }
@@ -78,6 +81,10 @@ func (f *lyrFonts) delete() {
 	f.bg.Delete()
 	f.mainFM.Delete()
 	f.bgFM.Delete()
+	if f.sung != nil {
+		f.sung.Delete()
+		f.sungFM.Delete()
+	}
 }
 
 type lyrStyle struct {
@@ -89,6 +96,9 @@ type lyrStyle struct {
 	family                                                                            string
 	size                                                                              float64
 	weight                                                                            int
+	sungFamily                                                                        string
+	sungWeight                                                                        int
+	sungItalic, sungUnderline                                                         bool
 }
 
 func (u *UI) lyricsView(name string) *LyricsView {
@@ -103,7 +113,7 @@ func (u *UI) lyricsView(name string) *LyricsView {
 		v.scroll -= float64(d.Y()) * 0.6
 		v.scroll = clamp(v.scroll, -float64(v.Height())/2, math.Max(0, v.totalH-float64(v.Height())/2))
 		v.scrollTo = v.scroll
-		v.manualTill = time.Now().Add(3 * time.Second)
+		v.manualTill = time.Now().Add(100 * 365 * 24 * time.Hour) // until "back to the current line"
 		v.Update()
 	})
 	v.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
@@ -120,6 +130,13 @@ func (u *UI) lyricsView(name string) *LyricsView {
 	})
 	v.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { v.hoverLine = -1; v.Update() })
 	v.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+		if v.backBtn[2] > 0 && v.manual() {
+			x, y := float64(e.X()), float64(e.Y())
+			if x >= v.backBtn[0] && x <= v.backBtn[0]+v.backBtn[2] && y >= v.backBtn[1] && y <= v.backBtn[1]+v.backBtn[3] {
+				v.backToCurrent()
+				return
+			}
+		}
 		if i := v.lineAt(float64(e.Y())); i >= 0 && v.lyr != nil && v.lyr.Sync != core.SyncNone && v.OnSeek != nil {
 			v.manualTill = time.Time{}
 			v.OnSeek(v.lyr.Lines[v.lay[i].idx].Start)
@@ -184,9 +201,13 @@ func (v *LyricsView) readStyle() {
 		scaleDur:      p.Ms("scale-duration", 400),
 		dots:          p.Bool("interlude-dots", true),
 		lineFill:      p.Bool("line-sync-fill", false),
+		sungItalic:    p.Bool("sung-italic", false),
+		sungUnderline: p.Bool("sung-underline", false),
 		family:        p.Str("font-family", ""),
 		size:          p.Len("font-size", 28),
 		weight:        int(p.Num("font-weight", 700)),
+		sungFamily:    p.Str("sung-font-family", p.Str("font-family", "")),
+		sungWeight:    int(p.Num("sung-font-weight", 900)),
 	}
 	s.past = p.Color("past-color", s.color)
 	s.upcoming = p.Color("upcoming-color", s.color)
@@ -213,6 +234,12 @@ func (v *LyricsView) relayout() {
 	f := &lyrFonts{main: font(s.family, s.size, s.weight), bg: font(s.family, s.size*s.bgScale, s.weight)}
 	f.mainFM = qt.NewQFontMetricsF(f.main)
 	f.bgFM = qt.NewQFontMetricsF(f.bg)
+	if s.wordAnim == "font" {
+		f.sung = font(s.sungFamily, s.size, s.sungWeight)
+		f.sung.SetItalic(s.sungItalic)
+		f.sung.SetUnderline(s.sungUnderline)
+		f.sungFM = qt.NewQFontMetricsF(f.sung)
+	}
 	f.rowH, f.ascent = f.mainFM.Height()*1.08, f.mainFM.Ascent()
 	f.bgRowH, f.bgAsc = f.bgFM.Height()*1.05, f.bgFM.Ascent()
 	v.fonts = f
@@ -249,9 +276,9 @@ func (v *LyricsView) relayout() {
 				_ = j
 			}
 		}
-		ll.words, ll.rows, ll.rowW = wrapWords(words, f.mainFM, space, maxW)
+		ll.words, ll.rows, ll.rowW = wrapWords(words, f.mainFM, f.sungFM, space, maxW)
 		if len(ln.Background) > 0 {
-			ll.bg, ll.bgRows, ll.bgRowW = wrapWords(ln.Background, f.bgFM, bgSpace, maxW)
+			ll.bg, ll.bgRows, ll.bgRowW = wrapWords(ln.Background, f.bgFM, nil, bgSpace, maxW)
 		}
 		ll.h = float64(ll.rows)*f.rowH + float64(ll.bgRows)*f.bgRowH
 		if ll.interlude {
@@ -269,12 +296,17 @@ func (v *LyricsView) relayout() {
 	}
 }
 
-func wrapWords(ws []core.Word, fm *qt.QFontMetricsF, space, maxW float64) ([]layWord, int, []float64) {
+// wrapWords lays words out in rows. alt (optional) is a second font a word
+// may switch to while sung: the wider of the two is reserved.
+func wrapWords(ws []core.Word, fm, alt *qt.QFontMetricsF, space, maxW float64) ([]layWord, int, []float64) {
 	var out []layWord
 	var rowW []float64
 	x, row := 0.0, 0
 	for i, w := range ws {
 		wd := fm.HorizontalAdvance(w.Text)
+		if alt != nil {
+			wd = math.Max(wd, alt.HorizontalAdvance(w.Text))
+		}
 		gap := 0.0
 		if i > 0 && !w.Part {
 			gap = space
@@ -469,6 +501,7 @@ func (v *LyricsView) paint() {
 		r.Delete()
 		f.Delete()
 	}
+	v.paintBackButton(p)
 }
 
 // paintWords draws one block of words (main or background vocals).
@@ -565,7 +598,17 @@ func (v *LyricsView) paintWords(p *qt.QPainter, ws []layWord, rowW []float64, al
 				pt.Delete()
 			}
 		}
-		if anim == "fade" || anim == "glow" || anim == "bounce" {
+		if anim == "font" && frac > 0 && v.fonts.sung != nil && f == v.fonts.main {
+			// the sung word switches to another font (family, weight, italic, underline)
+			p.SetFont(v.fonts.sung)
+			setPenColor(p, theme.Mix(s.upcoming, s.active, theme.Ease("out-quad", math.Min(1, frac*3))))
+			pt := qt.NewQPointF3(x, y)
+			p.DrawText(pt, w.w.Text)
+			pt.Delete()
+			p.SetFont(f)
+			continue
+		}
+		if anim == "fade" || anim == "glow" || anim == "bounce" || anim == "font" {
 			setPenColor(p, theme.Mix(s.upcoming, s.active, theme.Ease("out-quad", frac)))
 			pt := qt.NewQPointF3(x, y)
 			p.DrawText(pt, w.w.Text)
@@ -639,4 +682,46 @@ func (v *LyricsView) paintDots(p *qt.QPainter, l layLine, top float64, pos int64
 		rr := r * breathe * (0.8 + 0.2*f)
 		fillRounded(p, x0+float64(k)*r*3-rr, y-rr, 2*rr, 2*rr, rr, c)
 	}
+}
+
+func (v *LyricsView) manual() bool { return time.Now().Before(v.manualTill) }
+
+// backToCurrent leaves manual scrolling and glides back to the active line.
+func (v *LyricsView) backToCurrent() {
+	v.manualTill = time.Time{}
+	target := -float64(v.Height()) * 0.15
+	if v.active >= 0 && v.active < len(v.lay) {
+		target = v.lay[v.active].y - v.st.focus*float64(v.Height()) + v.lay[v.active].h/2
+	}
+	v.scrollFrom, v.scrollTo, v.scrollT0 = v.scroll, target, time.Now()
+	v.Update()
+}
+
+// paintBackButton draws the pill that returns to automatic scrolling.
+// Props: -meo-back-bg, -meo-back-color.
+func (v *LyricsView) paintBackButton(p *qt.QPainter) {
+	if !v.manual() || v.lyr == nil || v.lyr.Sync == core.SyncNone {
+		v.backBtn = [4]float64{}
+		return
+	}
+	pr := v.u.style.For(v.QWidget, "LyricsView")
+	f := font(v.st.family, 13, 700)
+	defer f.Delete()
+	fm := qt.NewQFontMetricsF(f)
+	defer fm.Delete()
+	text := tr("Back to the current line")
+	w := fm.HorizontalAdvance(text) + 52
+	h := 36.0
+	x := (float64(v.Width()) - w) / 2
+	y := float64(v.Height()) - h - 18
+	v.backBtn = [4]float64{x, y, w, h}
+	p.SetOpacity(1)
+	fillRounded(p, x, y, w, h, h/2, pr.Color("back-bg", theme.Color{R: 255, G: 255, B: 255, A: 0.92}))
+	fg := pr.Color("back-color", theme.Color{R: 30, G: 12, B: 16, A: 1})
+	drawIcon(p, "chevron-down", x+20, y+h/2, 16, fg)
+	p.SetFont(f)
+	setPenColor(p, fg)
+	r := rectF(x+32, y, w-40, h)
+	p.DrawText5(r, int(qt.AlignVCenter|qt.AlignLeft), text)
+	r.Delete()
 }

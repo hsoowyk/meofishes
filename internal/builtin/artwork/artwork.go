@@ -1,6 +1,7 @@
 // Package artwork is the default fnt "artwork" plugin: it finds album covers
 // for tracks that have none (or only a video thumbnail) using the iTunes
-// Search API and the Deezer API. Neither needs an account or a key.
+// Search API, the Deezer API and Piped (YouTube Music art through a Piped
+// instance). None needs an account or a key.
 package artwork
 
 import (
@@ -28,8 +29,11 @@ var Manifest = plugin.Manifest{
 	Types:       []string{plugin.TypeFnt},
 	Runtime:     plugin.RuntimeBuiltin,
 	Settings: []plugin.Setting{
-		{Key: "order", Label: "Services", Type: "list", Default: "itunes,deezer",
-			Description: "Comma-separated: itunes, deezer. Remove one to disable it."},
+		{Key: "order", Label: "Services", Type: "list", Default: "itunes,deezer,piped",
+			Description: "Comma-separated: itunes, deezer, piped. Remove one to disable it."},
+		{Key: "piped", Label: "Piped instances", Type: "list",
+			Default:     "https://pipedapi.kavin.rocks,https://api.piped.private.coffee,https://pipedapi.adminforge.de",
+			Description: "Piped API instances tried in order (comma-separated)."},
 		{Key: "size", Label: "Image size (px)", Type: "number", Default: "600"},
 		{Key: "country", Label: "iTunes store country", Default: "us"},
 		{Key: "minScore", Label: "Minimum match score (0–1)", Type: "number", Default: "0.55",
@@ -93,6 +97,8 @@ func (p *impl) Artwork(ctx context.Context, q lyrics.Query) (string, error) {
 			u, err = p.itunes(ctx, q, min, size, s["country"])
 		case "deezer":
 			u, err = p.deezer(ctx, q, min, size)
+		case "piped":
+			u, err = p.piped(ctx, q, min, size, s["piped"])
 		default:
 			continue
 		}
@@ -169,4 +175,52 @@ func (p *impl) deezer(ctx context.Context, q lyrics.Query, min float64, size int
 		return "", lyrics.ErrNotFound
 	}
 	return best, nil
+}
+
+// piped searches YouTube Music songs through a Piped instance; their
+// thumbnails are square album art (lh3.googleusercontent.com).
+func (p *impl) piped(ctx context.Context, q lyrics.Query, min float64, size int, instances string) (string, error) {
+	query := strings.TrimSpace(lyrics.PrimaryArtist(q.Artist) + " " + q.Title)
+	for _, inst := range strings.Split(instances, ",") {
+		inst = strings.TrimRight(strings.TrimSpace(inst), "/")
+		if inst == "" {
+			continue
+		}
+		var r struct {
+			Items []struct {
+				Title        string `json:"title"`
+				UploaderName string `json:"uploaderName"`
+				Duration     int64  `json:"duration"`
+				Thumbnail    string `json:"thumbnail"`
+			} `json:"items"`
+		}
+		ictx, cancel := context.WithTimeout(ctx, 6*time.Second)
+		err := p.get(ictx, inst+"/search?filter=music_songs&q="+url.QueryEscape(query), &r)
+		cancel()
+		if err != nil {
+			continue // next instance
+		}
+		best, bestScore := "", 0.0
+		for _, it := range r.Items {
+			artist := strings.TrimSuffix(it.UploaderName, " - Topic")
+			sc := lyrics.MatchScore(q, it.Title, artist, it.Duration*1000)
+			if sc > bestScore && it.Thumbnail != "" {
+				best, bestScore = it.Thumbnail, sc
+			}
+		}
+		if bestScore < min {
+			return "", lyrics.ErrNotFound
+		}
+		return PipedArt(best, size), nil
+	}
+	return "", lyrics.ErrNotFound
+}
+
+// PipedArt asks googleusercontent for a bigger square image when possible
+// ("…=w120-h120-l90-rj" → "…=w600-h600-l90-rj").
+func PipedArt(u string, size int) string {
+	if i := strings.LastIndex(u, "=w"); i > 0 && strings.Contains(u, "googleusercontent") {
+		return u[:i] + fmt.Sprintf("=w%d-h%d-l90-rj", size, size)
+	}
+	return u
 }

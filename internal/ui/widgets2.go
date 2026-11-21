@@ -161,10 +161,37 @@ type TiltCover struct {
 	hover   float64 // 0..1
 	hoverT  float64
 	running bool
+	// ShowInfo shows the title and artist over a blurred cover on hover.
+	ShowInfo bool
+	title    string
+	artist   string
+	blurSrc  *qt.QPixmap // the cover the blur was made from
+	blur     *qt.QPixmap // tiny copy, drawn scaled up = blurred
+}
+
+// SetInfo sets the text shown on hover.
+func (c *TiltCover) SetInfo(title, artist string) {
+	c.title, c.artist = title, artist
+	c.Update()
+}
+
+func (c *TiltCover) blurred() *qt.QPixmap {
+	if c.cur == nil || c.cur.IsNull() {
+		return nil
+	}
+	if c.blurSrc != c.cur || c.blur == nil {
+		if c.blur != nil {
+			c.blur.Delete()
+		}
+		n := int(c.u.style.For(c.QWidget, "TiltCover").Num("hover-blur", 22))
+		c.blur = qt.NewQPixmap5(c.cur.Scaled3(max(4, n), max(4, n), qt.IgnoreAspectRatio, qt.SmoothTransformation))
+		c.blurSrc = c.cur
+	}
+	return c.blur
 }
 
 func (u *UI) tiltCover(name string) *TiltCover {
-	c := &TiltCover{CoverView: u.coverView(name, false)}
+	c := &TiltCover{CoverView: u.coverView(name, true)}
 	c.SetMouseTracking(true)
 	c.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) { c.paintTilted() })
 	c.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
@@ -229,14 +256,14 @@ func (c *TiltCover) paintTilted() {
 		fillRounded(p, x0+ox-g, y0+oy-g, side+2*g, side+2*g, r+g, withAlpha(sc, sa/7))
 	}
 
-	tr := qt.NewQTransform2()
-	tr.Translate(w/2, h/2)
-	tr.Rotate2(c.rx, qt.XAxis)
-	tr.Rotate2(c.ry, qt.YAxis)
-	tr.Scale(scale, scale)
-	tr.Translate(-w/2, -h/2)
-	p.SetTransform(tr)
-	tr.Delete()
+	xf := qt.NewQTransform2()
+	xf.Translate(w/2, h/2)
+	xf.Rotate2(c.rx, qt.XAxis)
+	xf.Rotate2(c.ry, qt.YAxis)
+	xf.Scale(scale, scale)
+	xf.Translate(-w/2, -h/2)
+	p.SetTransform(xf)
+	xf.Delete()
 
 	path := qt.NewQPainterPath()
 	path.AddRoundedRect2(x0, y0, side, side, r, r)
@@ -260,6 +287,43 @@ func (c *TiltCover) paintTilted() {
 		}
 		draw(c.cur, c.fade)
 		p.SetOpacity(1)
+		// hover: blurred cover + title and artist at the bottom
+		if c.ShowInfo && c.hover > 0.01 && c.title != "" {
+			if bl := c.blurred(); bl != nil {
+				draw(bl, c.hover)
+				p.SetOpacity(1)
+			}
+			g := qt.NewQLinearGradient3(0, y0+side*0.45, 0, y0+side)
+			c0, c1 := qc(theme.Color{A: 0}), qc(theme.Color{A: 0.55 * c.hover})
+			g.SetColorAt(0, c0)
+			g.SetColorAt(1, c1)
+			gb := qt.NewQBrush10(g.QGradient)
+			p.FillPath(path, gb)
+			gb.Delete()
+			c0.Delete()
+			c1.Delete()
+			g.Delete()
+			fg := pr.Color("info-color", theme.Color{R: 255, G: 255, B: 255, A: 1})
+			pad := side * 0.06
+			tf := font(pr.Str("info-font-family", ""), side*0.075, 800)
+			af := font(pr.Str("info-font-family", ""), side*0.048, 600)
+			p.SetOpacity(c.hover)
+			p.SetFont(af)
+			setPenColor(p, withAlpha(fg, 0.85))
+			ar := rectF(x0+pad, y0+side*0.5, side-2*pad, side*0.5-pad)
+			p.DrawText5(ar, int(qt.AlignLeft|qt.AlignBottom)|int(qt.TextWordWrap), tr("by {artist}", "artist", c.artist))
+			afm := qt.NewQFontMetricsF(af)
+			p.SetFont(tf)
+			setPenColor(p, fg)
+			tr2 := rectF(x0+pad, y0+side*0.3, side-2*pad, side*0.7-pad-afm.Height()*1.25)
+			p.DrawText5(tr2, int(qt.AlignLeft|qt.AlignBottom)|int(qt.TextWordWrap), c.title)
+			p.SetOpacity(1)
+			afm.Delete()
+			ar.Delete()
+			tr2.Delete()
+			tf.Delete()
+			af.Delete()
+		}
 		// glossy light that follows the tilt
 		if c.hover > 0.01 {
 			gx := x0 + side*(0.5+c.ry/40)

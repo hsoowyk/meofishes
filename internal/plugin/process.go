@@ -132,7 +132,7 @@ func (p *process) start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	err = p.rpc(ctx, "initialize", map[string]any{
-		"plugin": p.m.ID, "version": p.host.Version, "userAgent": p.host.UserAgent,
+		"plugin": p.m.ID, "version": p.host.Version, "userAgent": p.host.UserAgent, "quality": p.host.Quality,
 		"settings": p.settings(), "dataDir": filepath.Join(p.host.DataDir, p.m.ID),
 	}, &init)
 	if err != nil {

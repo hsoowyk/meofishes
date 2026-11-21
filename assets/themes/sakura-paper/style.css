@@ -21,7 +21,7 @@
 
 #Root { -meo-backdrop-dynamic-strength: 0.12; -meo-backdrop-glow: alpha(#e46f93, .16); }
 #FullPlayer { -meo-backdrop-image-shade: alpha(#ffffff, .45); -meo-backdrop-dynamic-strength: 0.15; }
-#NowCardPlay, #FullPlay { -meo-bg: #c9505e; -meo-hover-bg: #b64553; -meo-icon-color: #ffffff; -meo-hover-icon-color: #ffffff; }
+#NowCardPlay { -meo-bg: #c9505e; -meo-hover-bg: #b64553; -meo-icon-color: #ffffff; -meo-hover-icon-color: #ffffff; }
 QPushButton[role="primary"] { color: #ffffff; }
 #FullCover { -meo-shadow-color: alpha(#8e2f3c, .35); }
 #FullLyrics {

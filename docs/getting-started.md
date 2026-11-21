@@ -7,15 +7,27 @@ Needs: **mpv** (plays audio), **Qt 5** libraries, and optionally **yt-dlp**
 
 With a built `meofishes` binary next to the repository:
 
+Download `meofishes-linux-x86_64.tar.gz` from the project's **nightly**
+release, extract it and run:
+
 ```sh
-./install.sh            # /opt/meofishes + applications menu (asks for sudo)
-./install.sh --user     # ~/.local/opt/meofishes, only for you
-./install.sh --uninstall [--user]
+./install.sh            # ~/.local/opt/meofishes, only for you
+./install.sh --system   # /opt/meofishes, every user (asks for sudo)
 ```
 
 The installer copies the binary, adds `meofishes.desktop` and the icon to the
-applications menu, links `meofishes` into your PATH and runs `meofishes setup`,
-which installs the base themes and plugins (they are embedded in the binary).
+applications menu, links `meofishes` into your PATH, runs `meofishes setup`
+(base themes and plugins) and then **deletes the extracted folder**. From then
+on:
+
+```sh
+meofishes update        # the latest build (also offered by the app itself)
+meofishes uninstall     # remove it (--purge removes settings and library too)
+```
+
+Closing the window keeps the music playing; the **tray icon** (next to the
+clock) shows the window again, controls playback and quits. Both can be
+turned off in Settings → Playback.
 
 ## First run
 

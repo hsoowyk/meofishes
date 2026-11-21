@@ -43,7 +43,7 @@ func (d *declarative) vars(extra map[string]any) map[string]any {
 	}
 	v := map[string]any{
 		"settings": s,
-		"app":      map[string]any{"version": d.host.Version, "userAgent": d.host.UserAgent},
+		"app":      map[string]any{"version": d.host.Version, "userAgent": d.host.UserAgent, "quality": d.host.Quality},
 	}
 	for k, x := range extra {
 		v[k] = x

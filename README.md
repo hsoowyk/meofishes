@@ -8,9 +8,13 @@ listen from somewhere? Install the plugin and enjoy.
   (animations), `dep` (tools for other plugins), `xtm` (replace the player or
   the icons), `evt` (events) — written as plain JSON, JavaScript with Go
   modules, or any program (Go SDK included).
-- **Word-synced lyrics** by default (Lyprio → BetterLyrics → lrc.red → Unison
-  → Paxsenix → Kugou), a swiping current-lyric line, a fullscreen player with
-  a tilting cover, and a frequency visualizer when a song has no lyrics.
+- **Word-synced lyrics** by default (BetterLyrics → lrc.red → Unison →
+  Paxsenix → Kugou → LRCLIB), a swiping current-lyric line, a minimal
+  fullscreen player with a tilting cover over a swirling "potion" of the
+  cover's colors, video, and a frequency visualizer when a song has no lyrics.
+- **Offline**: played songs are cached, any song can be downloaded.
+- **Remote control** from the terminal (`meofishes next`, `meofishes lyrics`…),
+  tray icon, background playback, built-in updater (`meofishes update`).
 - **Instant playback**: songs download in parallel parts and the next song is
   prepared ahead of time.
 - **Playlists**, liked songs, plugin playlists, **.mepw** import/export.
@@ -23,7 +27,7 @@ listen from somewhere? Install the plugin and enjoy.
 
 ```sh
 go build -ldflags="-s -w" -o meofishes ./cmd/meofishes   # see docs/building.md
-./install.sh            # or ./install.sh --user
+./install.sh            # ~/.local; --system for /opt
 ```
 
 Needs mpv (and yt-dlp for YouTube/SoundCloud). The first build compiles the Qt

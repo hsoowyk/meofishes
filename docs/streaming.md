@@ -15,6 +15,18 @@ YouTube/SoundCloud pages are first resolved with **yt-dlp** into the audio URL
 (Settings → Streaming → Resolve web pages with yt-dlp), so they can be chunked
 too; if that fails, mpv opens the page itself.
 
+The first part is small (128 KB), so playback starts as soon as it arrives;
+the following parts are bigger and come in order from where the player is
+reading. Changing songs stops the previous one at once.
+
+## Quality
+
+Settings → Playback → **Maximum quality**: Max (lossless when the source has
+it), High (~192 kbps), Normal (~128 kbps) or Data saver (~64 kbps). It picks
+the yt-dlp format for web pages, and plugins receive it as `app.quality`
+(scripts, declarative `{{app.quality}}`) or `quality` in `initialize`
+(process) to pick their own streams.
+
 ## Prefetch
 
 A few seconds after a song starts, meofishes resolves the **next** song and

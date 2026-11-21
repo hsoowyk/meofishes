@@ -92,7 +92,18 @@ func (u *UI) build() {
 
 	u.win.OnCloseEvent(func(super func(*qt.QCloseEvent), e *qt.QCloseEvent) {
 		u.saveQueue()
+		// keep playing in the background: hide to the tray instead of quitting
+		if !u.quitting && u.cfg.Prefs.Background && u.tray != nil && u.tray.IsVisible() {
+			e.Ignore()
+			u.win.Hide()
+			if !u.cfg.Prefs.BackgroundHinted {
+				u.cfg.Prefs.BackgroundHinted = true
+				u.tray.ShowMessage("meofishes", tr("Still playing here. Right-click the icon to quit."), u.logoIcon())
+			}
+			return
+		}
 		super(e)
+		qt.QCoreApplication_Quit()
 	})
 	u.shortcuts()
 	start := u.cfg.Prefs.StartPage
@@ -132,7 +143,7 @@ func (u *UI) shortcuts() {
 	add("Ctrl+3", func() { u.goPage("library") })
 	add("Ctrl+4", func() { u.goPage("queue") })
 	add("Ctrl+,", func() { u.goPage("settings") })
-	add("Ctrl+Q", func() { u.win.Close() })
+	add("Ctrl+Q", u.quit)
 	add("Escape", u.closeFull)
 	add("F11", func() {
 		if u.win.IsFullScreen() {
