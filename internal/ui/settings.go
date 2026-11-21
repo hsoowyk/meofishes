@@ -484,6 +484,9 @@ func (sp *settingsPage) lyrics(s *sb) {
 	s.styleColor(tr("Sung text"), "", sel+"-meo-active-color")
 	s.styleColor(tr("Other lines"), "", sel+"-meo-color")
 	s.toggle(tr("Background vocals"), "", u.cfg.Prefs.BgVocals, func(on bool) { u.cfg.Prefs.BgVocals = on; u.setLyrics(u.lyrics, "") })
+	s.choice(tr("Latin letters"), tr("Japanese kana, Korean hangul and Cyrillic written in Latin letters (kanji stay as they are)."),
+		[][2]string{{"", tr("Off")}, {"below", tr("Under the line")}, {"instead", tr("Instead of the original")}},
+		u.cfg.Prefs.Romanize, func(v string) { u.cfg.Prefs.Romanize = v; u.setLyrics(u.lyrics, "") })
 	s.toggle(tr("Show credits"), "", u.cfg.Prefs.LyricsCredits, func(on bool) { u.cfg.Prefs.LyricsCredits = on })
 	s.styleToggle(tr("Dots during instrumental parts"), "", sel+"-meo-interlude-dots", true)
 
@@ -531,6 +534,21 @@ func (sp *settingsPage) playback(s *sb) {
 			u.stopMPRIS()
 		}
 	})
+	s.toggle(tr("Skip parts without music"), tr("SponsorBlock: skips talking, intros, sponsors and “subscribe” reminders in YouTube videos, from a community database."),
+		u.cfg.Prefs.SponsorBlock, func(on bool) { u.cfg.Prefs.SponsorBlock = on; u.sbFetch() })
+	s.text(tr("SponsorBlock categories"), tr("Comma-separated: music_offtopic, intro, outro, sponsor, selfpromo, interaction, preview. Empty = the usual set."),
+		u.cfg.Prefs.SponsorCats, "music_offtopic,sponsor,selfpromo,interaction", func(v string) {
+			u.cfg.Prefs.SponsorCats = strings.ReplaceAll(v, " ", "")
+			u.sbFetch()
+		})
+	s.toggle(tr("Show the song on Discord"), tr("“Listening to …” on your profile, through the Discord app running on this computer."),
+		u.cfg.Prefs.Discord, func(on bool) { u.cfg.Prefs.Discord = on; u.discordSync() })
+	s.text(tr("Discord application id"), tr("Create an application called meofishes at discord.com/developers/applications and paste its Application ID here — Discord shows its name."),
+		u.cfg.Prefs.DiscordAppID, "123456789012345678", func(v string) {
+			u.cfg.Prefs.DiscordAppID = strings.TrimSpace(v)
+			u.discordStop()
+			u.discordSync()
+		})
 	s.toggle(tr("Notify when a song starts"), tr("Only while the window is not in front."), u.cfg.Prefs.Notify, func(on bool) { u.cfg.Prefs.Notify = on })
 	s.toggle(tr("Keep playing when the window is closed"), tr("Closing the window hides it in the tray; quit from the tray icon."), u.cfg.Prefs.Background, func(on bool) { u.cfg.Prefs.Background = on })
 	s.toggle(tr("Autoplay"), tr("When the queue ends, keep playing similar songs."), u.cfg.Prefs.Autoplay, func(on bool) { u.cfg.Prefs.Autoplay = on })

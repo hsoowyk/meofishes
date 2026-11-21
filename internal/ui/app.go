@@ -18,6 +18,7 @@ import (
 	"meofishes/internal/config"
 	"meofishes/internal/core"
 	"meofishes/internal/ctl"
+	"meofishes/internal/discord"
 	"meofishes/internal/i18n"
 	"meofishes/internal/library"
 	"meofishes/internal/mpris"
@@ -25,6 +26,7 @@ import (
 	"meofishes/internal/offline"
 	"meofishes/internal/player"
 	"meofishes/internal/plugin"
+	"meofishes/internal/sponsorblock"
 	"meofishes/internal/sysproc"
 	"meofishes/internal/theme"
 	"meofishes/internal/update"
@@ -73,6 +75,11 @@ type UI struct {
 	eqTimer         *qt.QTimer
 	listenMs        int64 // time the current song really played (statistics)
 	lt              listenTogether
+	sb              *sponsorblock.Client
+	sbSegs          []sponsorblock.Segment
+	sbLast          int64
+	discord         *discord.Client
+	discordCh       chan *discord.Presence
 	togetherPg      *togetherPage
 	prefetched      map[string]prefetch
 	autoplayOn      bool // a recommendation request is running
@@ -217,6 +224,7 @@ func Run(assets fs.FS) int {
 
 	code := qt.QApplication_Exec()
 	u.stopMPRIS()
+	u.discordStop()
 	if u.streamTrack.Title != "" {
 		u.core.Library.RecordListen(u.streamTrack, u.listenMs)
 	}
@@ -490,6 +498,10 @@ func (u *UI) startTimers() {
 				u.full.syncRight()
 			}
 			u.syncMPRIS()
+			u.discordSync()
+		}
+		if playing {
+			u.sbTick(st.PositionMs)
 		}
 		if u.mpris != nil {
 			if u.mprisTick++; u.mprisTick%5 == 0 {
@@ -857,7 +869,8 @@ func (u *UI) playCurrent() {
 			}
 			u.core.Plugins.Emit(plugin.EventTrackStart, map[string]any{"track": track})
 			u.notifyTrack()
-			singleShot(1500, u.syncMPRIS) // the length is known now
+			u.sbFetch()
+			singleShot(1500, func() { u.syncMPRIS(); u.discordSync() }) // the length is known now
 			singleShot(4000, func() { u.prefetchNext(gen) })
 		})
 		// lyrics: wait for the duration if the source did not know it

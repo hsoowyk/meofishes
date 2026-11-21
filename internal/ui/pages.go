@@ -9,7 +9,9 @@ import (
 
 	qt "github.com/mappu/miqt/qt"
 
+	"meofishes/internal/config"
 	"meofishes/internal/core"
+	"meofishes/internal/lyrics"
 	"meofishes/internal/plugin"
 )
 
@@ -82,6 +84,14 @@ func (u *UI) fillSources(cb *qt.QComboBox, withAll bool) {
 		v.Delete()
 	}
 	sel := 0
+	if withAll {
+		v := qt.NewQVariant14("@lyrics")
+		cb.AddItem3(tr("By a line of the lyrics"), v)
+		v.Delete()
+		if prev == "@lyrics" {
+			sel = 1
+		}
+	}
 	for _, p := range u.core.Plugins.Sources() {
 		v := qt.NewQVariant14(p.Manifest.ID)
 		cb.AddItem3(p.Manifest.Name, v)
@@ -521,6 +531,10 @@ func (u *UI) doSearch(sp *searchPage) {
 	sp.seq++
 	seq := sp.seq
 	src := comboValue(sp.sources)
+	if src == "@lyrics" {
+		u.searchLyrics(sp, q, seq)
+		return
+	}
 	var targets []*plugin.Plugin
 	for _, p := range u.core.Plugins.Sources() {
 		if src == "*" || p.Manifest.ID == src {
@@ -576,6 +590,43 @@ func (u *UI) doSearch(sp *searchPage) {
 		}
 		sp.info.SetText(strings.Join(notes, " · "))
 		sp.list.SetTracks(all, tr("Nothing found for “{query}”.", "query", q))
+	})
+}
+
+// searchLyrics finds songs by a line of their lyrics; they play through
+// the "match" plugin (yt-dlp).
+func (u *UI) searchLyrics(sp *searchPage, q string, seq int) {
+	sp.list.SetTracks(nil, tr("Searching…"))
+	sp.info.SetText("")
+	u.core.Library.AddSearch(q)
+	sp.refreshHistory()
+	var hits []lyrics.Hit
+	u.runAsync(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		var err error
+		hits, err = lyrics.SearchByLyrics(ctx, &lyrics.Env{Client: u.core.Host.Client, UserAgent: config.UserAgent}, q)
+		return err
+	}, func(err error) {
+		if seq != sp.seq {
+			return
+		}
+		if err != nil {
+			sp.info.SetText(ellipsis(err.Error(), 120))
+		}
+		var ts []core.Track
+		for _, h := range hits {
+			t := core.Track{Source: "lyrics-search", ID: h.Artist + " - " + h.Title, Title: h.Title, Artist: h.Artist, Album: h.Album,
+				DurationMs: h.DurationMs, Cover: h.Cover}
+			if h.Snippet != "" {
+				t.Album = "“" + h.Snippet + "”"
+			}
+			ts = append(ts, t)
+		}
+		if len(ts) > 0 {
+			sp.info.SetText(tr("Songs with these words (Genius) — they play from YouTube."))
+		}
+		sp.list.SetTracks(ts, tr("No song has these words."))
 	})
 }
 

@@ -33,7 +33,7 @@ jobs:
           CGO_ENABLED=0 go test ./internal/core/... ./internal/player/... ./internal/lyrics/... ./internal/theme/... ./internal/plugin/... \
             ./internal/stream/... ./internal/library/... ./internal/viz/... ./internal/app/... ./internal/i18n/... \
             ./internal/catalog/... ./internal/config/... ./internal/builtin/... \
-            ./internal/offline/... ./internal/ctl/... ./internal/update/... ./internal/mpris/... ./internal/sysproc/... ./internal/together/...
+            ./internal/offline/... ./internal/ctl/... ./internal/update/... ./internal/mpris/... ./internal/sysproc/... ./internal/together/... ./internal/sponsorblock/... ./internal/discord/... ./internal/romanize/...
           go run ./tools/uicheck ./internal/ui ./cmd/meofishes
 
       - name: Build

@@ -1,0 +1,25 @@
+{
+  "id": "subsonic",
+  "name": "Subsonic / Navidrome",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Your own music server: Navidrome, Airsonic, Gonic, Ampache, LMS, Jellyfin (with its Subsonic plugin) — anything that speaks the Subsonic API. Search, home (recent and random albums), playlists, artist radio, lyrics and covers; plays straight from the server. Scrobbles back so the server's play counts stay right.",
+  "homepage": "https://www.subsonic.org/pages/api.jsp",
+  "types": ["src", "fnt", "evt"],
+  "runtime": "script",
+  "entry": "main.js",
+  "modules": ["http", "crypto"],
+  "events": ["track.start", "track.end"],
+  "settings": [
+    { "key": "server", "label": "Server address", "type": "text", "default": "",
+      "description": "For example https://music.example.com (try https://demo.navidrome.org with demo / demo)" },
+    { "key": "user", "label": "User", "type": "text", "default": "" },
+    { "key": "password", "label": "Password", "type": "password", "default": "",
+      "description": "Sent as a salted token, never in clear text." },
+    { "key": "format", "label": "Stream format (raw = original file)", "type": "select", "default": "raw",
+      "options": ["raw", "opus", "mp3", "aac"] },
+    { "key": "bitrate", "label": "Max bitrate when transcoding (kbps, 0 = no limit)", "type": "number", "default": "0" },
+    { "key": "limit", "label": "Results", "type": "number", "default": "40" },
+    { "key": "scrobble", "label": "Report plays to the server", "type": "bool", "default": "true" }
+  ]
+}

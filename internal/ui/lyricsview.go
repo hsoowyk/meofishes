@@ -8,6 +8,7 @@ import (
 	qt "github.com/mappu/miqt/qt"
 
 	"meofishes/internal/core"
+	"meofishes/internal/romanize"
 	"meofishes/internal/theme"
 )
 
@@ -59,6 +60,9 @@ type layLine struct {
 	bg        []layWord
 	bgRows    int
 	bgRowW    []float64
+	rom       []layWord // romanization, under the line
+	romRows   int
+	romRowW   []float64
 	align     string
 	timed     bool // has word timing
 	interlude bool // a gap marker before this line
@@ -223,7 +227,7 @@ func (v *LyricsView) relayout() {
 	if v.lyr != nil {
 		key = v.lyr.Provider
 	}
-	key += "|" + itoa(v.Width())
+	key += "|" + itoa(v.Width()) + "|" + v.u.cfg.Prefs.Romanize
 	if key == v.layKey && v.fonts != nil {
 		return
 	}
@@ -271,16 +275,23 @@ func (v *LyricsView) relayout() {
 		}
 		words := ln.Words
 		if len(words) == 0 { // line or plain: split text so it wraps
-			for j, t := range strings.Fields(ln.Text) {
+			for _, t := range strings.Fields(ln.Text) {
 				words = append(words, core.Word{Text: t, Start: ln.Start, End: ln.End, Part: false})
-				_ = j
+			}
+		}
+		if mode := v.u.cfg.Prefs.Romanize; mode != "" && romanize.Needed(ln.Text) {
+			rw := romanWords(words)
+			if mode == "instead" {
+				words = rw
+			} else {
+				ll.rom, ll.romRows, ll.romRowW = wrapWords(rw, f.bgFM, nil, bgSpace, maxW)
 			}
 		}
 		ll.words, ll.rows, ll.rowW = wrapWords(words, f.mainFM, f.sungFM, space, maxW)
 		if len(ln.Background) > 0 {
 			ll.bg, ll.bgRows, ll.bgRowW = wrapWords(ln.Background, f.bgFM, nil, bgSpace, maxW)
 		}
-		ll.h = float64(ll.rows)*f.rowH + float64(ll.bgRows)*f.bgRowH
+		ll.h = float64(ll.rows)*f.rowH + float64(ll.bgRows+ll.romRows)*f.bgRowH
 		if ll.interlude {
 			y += f.rowH * 0.9
 		}
@@ -484,6 +495,11 @@ func (v *LyricsView) paint() {
 			bgBase := withAlpha(s.bgVocal, 0.7)
 			v.paintWords(p, l.bg, l.bgRowW, l.align, float64(l.rows)*v.fonts.rowH, v.fonts.bg, v.fonts.bgRowH, v.fonts.bgAsc, W,
 				line, isActive, bgBase, true)
+		}
+		if len(l.rom) > 0 {
+			yOff := float64(l.rows)*v.fonts.rowH + float64(l.bgRows)*v.fonts.bgRowH
+			v.paintWords(p, l.rom, l.romRowW, l.align, yOff, v.fonts.bg, v.fonts.bgRowH, v.fonts.bgAsc, W,
+				line, isActive, withAlpha(base, 0.75), l.timed)
 		}
 		p.Restore()
 	}
@@ -724,4 +740,19 @@ func (v *LyricsView) paintBackButton(p *qt.QPainter) {
 	r := rectF(x+32, y, w-40, h)
 	p.DrawText5(r, int(qt.AlignVCenter|qt.AlignLeft), text)
 	r.Delete()
+}
+
+// romanWords romanizes each word, keeping its timing. Syllables that end a
+// word without a space (Japanese, Korean) keep the "part" mark.
+func romanWords(ws []core.Word) []core.Word {
+	out := make([]core.Word, 0, len(ws))
+	for _, w := range ws {
+		r := w
+		r.Text = romanize.Text(w.Text)
+		if r.Text == "" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }

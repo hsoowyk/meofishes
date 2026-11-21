@@ -184,6 +184,21 @@
   },
   {
    "kind": "plugin",
+   "id": "subsonic",
+   "name": "Subsonic / Navidrome",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Your own music server: Navidrome, Airsonic, Gonic, Ampache, LMS, Jellyfin (Subsonic plugin). Search, home, playlists and albums, radio, lyrics, covers and scrobbling.",
+   "types": [
+    "src",
+    "fnt",
+    "evt"
+   ],
+   "runtime": "script",
+   "bundled": "plugins/subsonic"
+  },
+  {
+   "kind": "plugin",
    "id": "somafm-go",
    "name": "SomaFM (Go plugin)",
    "version": "1.0.0",

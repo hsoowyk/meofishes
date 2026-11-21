@@ -35,3 +35,12 @@ func TestLiveProviders(t *testing.T) {
 		t.Logf("%-13s %-5s %3d lines  first=%q (%s)", id, l.Sync, len(l.Lines), first, time.Since(start).Round(time.Millisecond))
 	}
 }
+
+func TestLiveSearchByLyrics(t *testing.T) {
+	e := &Env{Client: http.DefaultClient, UserAgent: "meofishes-test"}
+	hits, err := SearchByLyrics(context.Background(), e, "we're no strangers to love")
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("%v %v", hits, err)
+	}
+	t.Logf("%d hits, first %q by %q: %q", len(hits), hits[0].Title, hits[0].Artist, hits[0].Snippet)
+}

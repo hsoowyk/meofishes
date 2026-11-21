@@ -18,6 +18,9 @@
 - **Video** of songs that have one, inside the fullscreen player.
 - **Offline**: played songs are kept (with a size limit), any song can be
   downloaded.
+- **Skip parts without music** (SponsorBlock): talking, intros, sponsors and
+  "subscribe" reminders in YouTube videos are skipped, from the community
+  database at sponsor.ajay.app. Categories in Settings → Playback.
 
 ## Library
 
@@ -30,6 +33,13 @@
   after 30 s or half the song). Kept on your computer; cleared with the
   history.
 - **Recent searches** under the search box.
+- **Search by lyrics**: pick "By a line of the lyrics" next to the search box
+  and type a line you remember (Genius' lyric search; the songs play from
+  YouTube).
+- **Your own server**: the bundled Subsonic plugin plays from Navidrome,
+  Airsonic, Gonic, Ampache, LMS or Jellyfin (with its Subsonic plugin):
+  search, a random mix on the home page, playlists and newest albums,
+  radio, lyrics, covers, and plays reported back to the server.
 
 ## Desktop integration
 
@@ -41,6 +51,9 @@
 - **Tray icon** and **background playback**.
 - **Terminal control**: `meofishes now | next | lyrics | sleep …`
   ([cli](cli.md)).
+- **Discord**: "Listening to …" on your profile (Settings → Playback; needs
+  the Application ID of an application you create at
+  discord.com/developers — Discord shows its name and you control it).
 - **Single instance**: opening meofishes again brings the window back.
 
 ## Listen together
@@ -54,6 +67,8 @@ listeners follow in sync and suggest songs ([details](listen-together.md)).
   Daylight — and everything adjustable in Settings or CSS.
 - Fullscreen player: tilting cover with title on hover, "potion" background,
   lyrics panel, visualizer.
+- **Latin letters in lyrics**: Japanese kana, Korean hangul and Cyrillic
+  romanized under each line or instead of it (Settings → Lyrics).
 - Six languages: English, Português, Français, Türkçe, Deutsch, Español.
 
 ## Platform

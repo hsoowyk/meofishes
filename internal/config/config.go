@@ -16,7 +16,7 @@ import (
 )
 
 // Version of the app.
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 // Commit is the git commit of this build (set by the CI with -ldflags
 // "-X meofishes/internal/config.Commit=…"); "dev" for local builds.
@@ -166,6 +166,16 @@ type Prefs struct {
 	MPRIS  bool `json:"mpris"`  // media keys, desktop media widget, playerctl
 	Notify bool `json:"notify"` // a notification when a song starts
 
+	// SponsorBlock skips non-music parts of YouTube videos (SponsorCats:
+	// comma-separated categories, "" = default set).
+	SponsorBlock bool   `json:"sponsorBlock"`
+	SponsorCats  string `json:"sponsorCats,omitempty"`
+	// Discord shows the song on the Discord profile (needs an application id).
+	Discord      bool   `json:"discord"`
+	DiscordAppID string `json:"discordAppId,omitempty"`
+	// Romanize lyrics: "" off, "below" under the line, "instead" replace.
+	Romanize string `json:"romanize,omitempty"`
+
 	// TogetherServer is the Listen Together server ("" = Metrolist's community server).
 	TogetherServer string `json:"togetherServer,omitempty"`
 
@@ -237,7 +247,7 @@ func DefaultPrefs() Prefs {
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
 		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true,
-		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true,
+		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true, SponsorBlock: true,
 	}
 }
 
