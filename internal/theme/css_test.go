@@ -41,3 +41,14 @@ func TestEase(t *testing.T) {
 		}
 	}
 }
+
+func TestBezier(t *testing.T) {
+	if v := Ease("cubic-bezier(0,0,1,1)", 0.3); v < 0.29 || v > 0.31 {
+		t.Fatalf("linear bezier: %v", v)
+	}
+	RegisterEasing("snappy", 0.2, 0.9, 0.1, 1)
+	if v := Ease("snappy", 0.5); v < 0.85 {
+		t.Fatalf("snappy: %v", v)
+	}
+	ResetCustomEasings()
+}

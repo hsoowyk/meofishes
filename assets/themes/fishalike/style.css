@@ -8,12 +8,12 @@
      @import "file.css";          split your theme in files
      -meo-*: value;               properties for animations and for the
                                   hand-painted widgets (lyrics, seek bar,
-                                  cover, backdrop, icons)
-   Every -meo-* property is documented in docs/THEMES.md.
+                                  covers, backdrop, icons, visualizer)
+   Everything is documented in docs/themes/.
    ========================================================================== */
 
 :root {
-  /* reds: "vermelho claro escurecido" */
+  /* reds: a darkened light red */
   --wine-0: #1b0b0f;
   --wine-1: #241015;
   --wine-2: #2f151b;
@@ -34,42 +34,42 @@
   --text-faint: #9f747b;
 
   --accent: var(--red);
-  --accent-2: var(--pink-light);
+  --panel: alpha(var(--wine-0), .42);
   --surface: alpha(var(--wine-4), .55);
   --surface-hover: alpha(var(--red), .14);
   --border: alpha(var(--pink-light), .08);
   --radius: 14px;
   --font: "Inter", "Noto Sans", "Cantarell", sans-serif;
+  --font-size: 13px;
 }
 
 /* ---------------------------------------------------------------- base */
 
 * {
   font-family: var(--font);
+  font-size: var(--font-size);
   color: var(--text);
   selection-background-color: alpha(var(--pink), .45);
   selection-color: var(--text);
   outline: none;
 }
 
-QMainWindow, #Root {
-  background: var(--wine-1);
-}
+QMainWindow, #Root { background: var(--wine-1); }
 
 /* The window background is painted by meofishes: a gradient that slowly
-   takes the color of the current cover. */
+   takes the color of the current cover, with a breathing light. */
 #Root {
   -meo-backdrop-from: var(--wine-1);
   -meo-backdrop-to: var(--wine-0);
   -meo-backdrop-angle: 160;
-  -meo-backdrop-dynamic: true;           /* tint with the album cover */
+  -meo-backdrop-dynamic: true;              /* tint with the album cover */
   -meo-backdrop-dynamic-strength: 0.38;
   -meo-backdrop-dynamic-duration: 1400ms;
-  -meo-backdrop-glow: alpha(var(--red), .22);   /* soft radial light */
+  -meo-backdrop-glow: alpha(var(--red), .2);
   -meo-backdrop-glow-x: 0.78;
-  -meo-backdrop-glow-y: 0.12;
+  -meo-backdrop-glow-y: 0.1;
   -meo-backdrop-glow-radius: 0.85;
-  -meo-backdrop-glow-pulse: 9000ms;       /* breathing light, 0 to disable */
+  -meo-backdrop-glow-pulse: 9000ms;          /* 0 disables the breathing */
 }
 
 QToolTip {
@@ -80,133 +80,180 @@ QToolTip {
   padding: 6px 9px;
 }
 
-/* ---------------------------------------------------------------- sidebar */
+/* ---------------------------------------------------------------- top bar */
 
-#Sidebar {
-  background: alpha(var(--wine-0), .55);
-  border-right: 1px solid var(--border);
+#TopBar {
+  background: transparent;
+  -meo-height: 52px;
+}
+
+/* the logo is painted by meofishes in the text color of the theme (dark on
+   light themes, light on dark ones); set -meo-logo-color to force one */
+#Logo {
+  -meo-logo-size: 26px;
+  -meo-bg: alpha(var(--pink-light), 0);
+  -meo-hover-bg: alpha(var(--pink-light), .1);
+  -meo-press-scale: 0.9;
+}
+
+#LogoMenu {
+  -meo-open-duration: 280ms;
+  -meo-open-easing: out-cubic;
+}
+#LogoMenuSeparator { background: alpha(var(--pink-light), .16); }
+
+#TopTitle { color: var(--text-faint); font-size: 12px; font-weight: 600; }
+
+QPushButton[role="window"] {
+  -meo-icon-size: 15px;
+  -meo-icon-color: var(--text-faint);
+  -meo-hover-icon-color: var(--text);
+}
+#WinClose { -meo-hover-bg: alpha(#e0475a, .85); -meo-hover-icon-color: #ffffff; }
+
+/* nav icons in the logo menu (name in the tooltip) */
+QPushButton[role="nav"] {
+  border: none;
+  background: transparent;
+  -meo-size: 38px;
+  -meo-icon-size: 19px;
+  -meo-bg: alpha(var(--red), 0);
+  -meo-hover-bg: alpha(var(--red), .14);
+  -meo-active-bg: alpha(var(--red), .28);
+  -meo-hover-duration: 180ms;
+  -meo-icon-color: var(--text-faint);
+  -meo-hover-icon-color: var(--text);
+  -meo-active-icon-color: var(--pink-light);
+  -meo-indicator-color: var(--pink-light);
+  -meo-indicator-width: 0;                  /* the bar beside the active icon */
+  -meo-press-scale: 0.9;
+}
+
+/* ---------------------------------------------------------------- left panel */
+
+#LeftPanel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  -meo-width: 290px;
   -meo-enter: slide-right;
-  -meo-enter-duration: 520ms;
+  -meo-enter-duration: 560ms;
   -meo-enter-easing: out-expo;
 }
 
-#Logo {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--pink-light);
-  padding: 22px 20px 4px 20px;
-}
+#LibraryHeading { padding: 2px 0 4px 4px; }
 
-#LogoSub {
-  color: var(--text-faint);
-  font-size: 11px;
-  padding: 0 20px 18px 22px;
-}
-
-QLabel[role="section"] {
-  color: var(--text-faint);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 16px 22px 6px 22px;
-}
-
-QPushButton[role="nav"] {
-  text-align: left;
-  padding: 10px 16px;
-  margin: 1px 12px;
+#LibraryItem {
   border-radius: 10px;
-  border: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-dim);
-  background: transparent;
-  /* animated hover/active background (overrides :hover when set) */
   -meo-bg: alpha(var(--red), 0);
-  -meo-hover-bg: alpha(var(--red), .12);
-  -meo-active-bg: alpha(var(--red), .26);
-  -meo-hover-duration: 180ms;
-  -meo-icon-color: var(--text-faint);
-  -meo-active-icon-color: var(--pink-light);
+  -meo-hover-bg: alpha(var(--red), .11);
+  -meo-active-bg: alpha(var(--pink), .18);
+}
+#LibraryItemCover {
+  -meo-radius: 8px;
+  -meo-placeholder: alpha(var(--red), .35);
+  -meo-placeholder-icon: var(--pink-light);
 }
 
-QPushButton[role="nav"][active="true"] {
-  color: var(--text);
+/* the line being sung, above the player; it swipes to the next line */
+#CurrentLyric {
+  -meo-height: 58px;
+  -meo-font-size: 17px;
+  -meo-font-weight: 800;
+  -meo-active-color: var(--pink-light);
+  -meo-swipe: up;                           /* up | down | left | right | fade */
+  -meo-swipe-duration: 440ms;
+  -meo-swipe-easing: out-cubic;
+  -meo-align: left;
 }
 
-#SidebarFooter {
-  color: var(--text-faint);
-  font-size: 11px;
-  padding: 14px 22px;
+#NowCard {
+  background: alpha(var(--wine-3), .62);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+#NowCardCover {
+  -meo-radius: 999px;                       /* round */
+  -meo-crossfade: 500ms;
+  -meo-placeholder: var(--wine-4);
+  -meo-placeholder-icon: var(--text-faint);
+  -meo-zoom-on-change: 0.9;
+  -meo-zoom-easing: out-back;
+}
+#NowCardTitle  { font-size: 14px; font-weight: 800; }
+#NowCardArtist { font-size: 12px; color: var(--text-dim); }
+#NowCardPlay {
+  -meo-bg: var(--pink-light);
+  -meo-hover-bg: #ffffff;
+  -meo-icon-color: var(--wine-1);
+  -meo-hover-icon-color: var(--wine-0);
+  -meo-press-scale: 0.88;
 }
 
 /* ---------------------------------------------------------------- pages */
 
 #Pages {
   background: transparent;
-  -meo-transition: slide-up;          /* fade | slide-left | slide-up | zoom | none */
+  -meo-transition: slide-up;                /* fade | slide-up | slide-left | slide-right | zoom | none */
   -meo-transition-duration: 380ms;
   -meo-transition-easing: out-quint;
   -meo-transition-distance: 26px;
 }
 
-QLabel[role="title"] {
-  font-size: 30px;
-  font-weight: 800;
-  color: var(--text);
-  padding: 26px 0 2px 0;
-}
-
-QLabel[role="subtitle"] {
-  font-size: 13px;
-  color: var(--text-dim);
-  padding-bottom: 14px;
-}
-
-QLabel[role="heading"] {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--pink-light);
-  padding: 18px 0 8px 0;
-}
-
-QLabel[role="hint"] {
-  color: var(--text-faint);
+QLabel[role="title"]    { font-size: 28px; font-weight: 800; padding: 4px 0 2px 0; }
+QLabel[role="subtitle"] { font-size: 13px; color: var(--text-dim); padding-bottom: 12px; }
+QLabel[role="heading"]  { font-size: 16px; font-weight: 700; color: var(--pink-light); padding: 14px 0 6px 0; }
+QLabel[role="hint"]     { color: var(--text-faint); font-size: 12px; }
+QLabel[role="time"]     { color: var(--text-faint); font-size: 11px; }
+QLabel[role="kbd"] {
+  background: alpha(var(--wine-0), .7);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
 }
 
-#Greeting {
-  font-size: 34px;
-  font-weight: 800;
-  color: var(--pink-light);
-  padding-top: 30px;
+#Greeting { font-size: 32px; font-weight: 800; color: var(--pink-light); }
+
+/* cards of the home page */
+#Card {
+  border-radius: 14px;
+  -meo-bg: alpha(var(--red), 0);
+  -meo-hover-bg: alpha(var(--red), .12);
+  -meo-hover-duration: 160ms;
+  -meo-enter: slide-up;
+  -meo-enter-duration: 480ms;
+  -meo-enter-stagger: 35ms;
+  -meo-enter-distance: 16px;
 }
+#CardCover, #PlaylistCover, #PlaylistHeaderCover {
+  -meo-radius: 12px;
+  -meo-crossfade: 450ms;
+  -meo-placeholder: var(--wine-4);
+  -meo-placeholder-icon: alpha(var(--pink-light), .5);
+}
+#PlaylistHeaderCover { -meo-radius: 16px; }
 
 /* ---------------------------------------------------------------- inputs */
 
-QLineEdit, QPlainTextEdit, QComboBox, QSpinBox {
+QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QFontComboBox {
   background: alpha(var(--wine-0), .55);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 9px 14px;
-  font-size: 14px;
+  padding: 8px 12px;
   color: var(--text);
 }
-
-QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {
   border: 1px solid alpha(var(--pink), .55);
   background: alpha(var(--wine-0), .8);
 }
+QPlainTextEdit { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; }
 
-QPlainTextEdit {
-  font-family: "JetBrains Mono", "Fira Code", monospace;
-  font-size: 13px;
-}
-
-#SearchBox {
-  font-size: 16px;
-  padding: 12px 18px;
-  border-radius: 22px;
-  min-height: 22px;
+#SearchBox, #HomeSearch {
+  font-size: 15px;
+  padding: 10px 18px;
+  border-radius: 21px;
 }
 
 QComboBox::drop-down { border: none; width: 26px; }
@@ -217,6 +264,7 @@ QComboBox QAbstractItemView {
   padding: 6px;
   selection-background-color: alpha(var(--red), .3);
 }
+QSpinBox::up-button, QSpinBox::down-button { width: 0; border: none; }
 
 QCheckBox { spacing: 10px; color: var(--text-dim); }
 QCheckBox::indicator {
@@ -224,9 +272,13 @@ QCheckBox::indicator {
   background: alpha(var(--wine-0), .8);
   border: 1px solid var(--border);
 }
-QCheckBox::indicator:checked {
-  background: var(--red);
-  border: 1px solid var(--pink-light);
+QCheckBox::indicator:checked { background: var(--red); border: 1px solid var(--pink-light); }
+
+/* the animated on/off switch of the settings */
+#Switch {
+  -meo-track-color: alpha(var(--text), .16);
+  -meo-on-color: var(--red);
+  -meo-knob-color: #ffffff;
 }
 
 /* ---------------------------------------------------------------- buttons */
@@ -235,93 +287,66 @@ QPushButton {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 11px;
-  padding: 8px 16px;
+  padding: 7px 15px;
   font-weight: 600;
-  color: var(--text);
 }
-QPushButton:hover { background: var(--surface-hover); }
-QPushButton:pressed { background: alpha(var(--red), .28); }
+QPushButton:hover    { background: var(--surface-hover); }
+QPushButton:pressed  { background: alpha(var(--red), .28); }
 QPushButton:disabled { color: var(--text-faint); }
 
 QPushButton[role="primary"] {
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 var(--red), stop:1 var(--pink-dark));
   border: none;
-  color: #fff;
+  color: #ffffff;
 }
 QPushButton[role="primary"]:hover {
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 lighten(var(--red), 6%), stop:1 lighten(var(--pink-dark), 6%));
 }
-
 QPushButton[role="danger"] { color: var(--pink-light); background: alpha(var(--pink-dark), .18); }
 
-/* round icon buttons of the player bar; the icon is drawn by meofishes
-   with -meo-icon-color */
-QPushButton[role="control"] {
+/* round icon buttons; the icon is drawn with -meo-icon-color */
+QPushButton[role="control"], QPushButton[role="window"] {
   background: transparent;
   border: none;
-  border-radius: 18px;
-  min-width: 36px; min-height: 36px;
-  max-width: 36px; max-height: 36px;
+  border-radius: 17px;
+  min-width: 34px; min-height: 34px;
+  max-width: 34px; max-height: 34px;
   padding: 0;
   -meo-icon-color: var(--text-dim);
   -meo-hover-icon-color: var(--text);
   -meo-active-icon-color: var(--pink-light);
   -meo-icon-size: 18px;
   -meo-bg: alpha(var(--pink-light), 0);
-  -meo-hover-bg: alpha(var(--pink-light), .08);
+  -meo-hover-bg: alpha(var(--pink-light), .09);
   -meo-hover-duration: 160ms;
-}
-
-#Play {
-  min-width: 48px; min-height: 48px; max-width: 48px; max-height: 48px;
-  border-radius: 24px;
-  -meo-bg: var(--pink-light);
-  -meo-hover-bg: #ffffff;
-  -meo-icon-color: var(--wine-1);
-  -meo-hover-icon-color: var(--wine-0);
-  -meo-icon-size: 20px;
   -meo-press-scale: 0.9;
-  -meo-shadow: 0 6px 22px alpha(var(--pink), .45);
 }
 
 /* ---------------------------------------------------------------- track lists */
 
-QListWidget {
-  background: transparent;
-  border: none;
-  outline: none;
-}
-QListWidget::item { border: none; padding: 0; margin: 0; }
-QListWidget::item:selected { background: transparent; }
-
 #TrackRow {
   border-radius: 12px;
-  background: transparent;
   -meo-bg: alpha(var(--red), 0);
   -meo-hover-bg: alpha(var(--red), .11);
   -meo-active-bg: alpha(var(--pink), .18);   /* the row playing now */
+  -meo-drop-color: var(--pink-light);        /* drag & drop indicator */
   -meo-hover-duration: 140ms;
-  -meo-enter: slide-up;                      /* rows cascade in */
+  -meo-enter: slide-up;
   -meo-enter-duration: 420ms;
   -meo-enter-stagger: 22ms;
   -meo-enter-easing: out-cubic;
   -meo-enter-distance: 14px;
 }
+#RowCover { -meo-radius: 8px; -meo-placeholder: var(--wine-4); -meo-placeholder-icon: var(--text-faint); }
+#RowLike { -meo-active-icon-color: var(--pink); -meo-icon-size: 16px; }
+#RowMore, #RowDrag { -meo-icon-size: 16px; }
 
-#RowCover {
-  -meo-radius: 8px;
-  -meo-placeholder: var(--wine-4);
-  -meo-placeholder-icon: var(--text-faint);
-}
-
-QLabel[role="row-title"] { font-size: 14px; font-weight: 600; color: var(--text); }
+QLabel[role="row-title"] { font-size: 14px; font-weight: 600; }
 QLabel[role="row-sub"]   { font-size: 12px; color: var(--text-dim); }
 QLabel[role="row-meta"]  { font-size: 12px; color: var(--text-faint); }
-QLabel[role="row-index"] { font-size: 12px; color: var(--text-faint); min-width: 22px; }
-
 #TrackRow[playing="true"] QLabel[role="row-title"] { color: var(--pink-light); }
 
-/* ---------------------------------------------------------------- cards (plugins, themes) */
+/* ---------------------------------------------------------------- cards (library, plugins, themes) */
 
 QFrame[role="card"] {
   background: alpha(var(--wine-3), .55);
@@ -330,59 +355,95 @@ QFrame[role="card"] {
 }
 QFrame[role="card"][active="true"] { border: 1px solid alpha(var(--pink-light), .55); }
 
-QLabel[role="card-title"] { font-size: 15px; font-weight: 700; }
-QLabel[role="card-sub"] { font-size: 12px; color: var(--text-dim); }
+QLabel[role="card-title"] { font-size: 14px; font-weight: 700; }
+QLabel[role="card-sub"]   { font-size: 12px; color: var(--text-dim); }
 QLabel[role="card-error"] { font-size: 12px; color: var(--pink); }
 
 QLabel[role="chip"] {
   background: alpha(var(--red), .2);
   color: var(--pink-light);
-  border-radius: 8px;
-  padding: 2px 8px;
+  border-radius: 7px;
+  padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
 }
+#Swatch { -meo-radius: 10px; }
 
-#Swatch {
-  -meo-radius: 10px;
+/* ---------------------------------------------------------------- seek / volume bars */
+
+#NowCardSeek, #FullSeekBar, #FullVolumeBar {
+  min-height: 16px;
+  -meo-track-color: alpha(var(--text), .14);
+  -meo-fill-color: var(--red);
+  -meo-fill-color-2: var(--pink-light);    /* gradient end; remove for solid */
+  -meo-handle-color: #ffffff;
+  -meo-handle-size: 12px;
+  -meo-height: 4px;
+  -meo-hover-height: 6px;
+  -meo-radius: 3px;
+  -meo-handle-on-hover: true;
+  -meo-smooth: 140ms;
+}
+#NowCardSeek { -meo-height: 3px; -meo-hover-height: 5px; -meo-handle-size: 10px; }
+
+/* ---------------------------------------------------------------- fullscreen player */
+
+#FullPlayer {
+  -meo-backdrop-from: var(--wine-1);
+  -meo-backdrop-to: var(--wine-0);
+  -meo-backdrop-dynamic: true;
+  -meo-backdrop-dynamic-strength: 0.5;
+  -meo-backdrop-image-opacity: 0.55;        /* the blurred cover behind everything */
+  -meo-backdrop-image-blur: 18;             /* smaller = blurrier */
+  -meo-backdrop-image-shade: alpha(#000000, .38);
+  -meo-open-duration: 460ms;
+  -meo-open-easing: out-cubic;
+  -meo-close-duration: 320ms;
+  -meo-close-easing: in-cubic;
 }
 
-/* ---------------------------------------------------------------- now playing */
-
-#NowPlaying {
-  background: alpha(var(--wine-0), .32);
-  border-left: 1px solid var(--border);
-  -meo-enter: slide-left;
-  -meo-enter-duration: 600ms;
-  -meo-enter-easing: out-expo;
-}
-
-#Cover {
+#FullCover {
   -meo-radius: 18px;
-  -meo-crossfade: 600ms;
+  -meo-crossfade: 650ms;
+  -meo-tilt-max: 12;                        /* degrees */
+  -meo-tilt-smoothing: 0.12;                /* 0.01 slow … 1 instant */
+  -meo-hover-scale: 1.03;
+  -meo-shadow-color: alpha(#000000, .6);
+  -meo-shadow-size: 30px;
   -meo-placeholder: var(--wine-3);
   -meo-placeholder-icon: alpha(var(--pink-light), .35);
-  -meo-shadow: 0 18px 40px alpha(#000000, .45);
-  -meo-zoom-on-change: 0.94;              /* new covers grow from 94 % */
-  -meo-zoom-easing: out-back;
 }
-
-#NowTitle  { font-size: 20px; font-weight: 800; color: var(--text); }
-#NowArtist { font-size: 14px; font-weight: 600; color: var(--pink-light); }
-#NowAlbum  { font-size: 12px; color: var(--text-faint); }
+#FullTitle  { font-size: 24px; font-weight: 800; }
+#FullArtist { font-size: 16px; font-weight: 600; color: var(--pink-light); }
+#FullAlbum  { font-size: 12px; color: var(--text-faint); }
+#FullPlay {
+  min-width: 52px; min-height: 52px; max-width: 52px; max-height: 52px;
+  border-radius: 26px;
+  -meo-bg: var(--pink-light);
+  -meo-hover-bg: #ffffff;
+  -meo-icon-color: var(--wine-1);
+  -meo-hover-icon-color: var(--wine-0);
+  -meo-icon-size: 22px;
+}
+#FullLyricsStatus { color: var(--text-faint); font-size: 11px; }
 
 /* ---------------------------------------------------------------- lyrics */
 
-#LyricsView, #MiniLyrics, #PanelLyrics {
+#FullLyrics {
   -meo-font-family: var(--font);
+  -meo-font-size: 36px;
   -meo-font-weight: 800;
+  -meo-line-spacing: 22px;
+  -meo-padding: 24px;
   -meo-color: alpha(var(--text), .30);          /* lines not being sung */
   -meo-past-color: alpha(var(--text), .42);     /* lines already sung */
   -meo-active-color: var(--text);               /* sung part of the active line */
   -meo-upcoming-color: alpha(var(--text), .38); /* unsung part of the active line */
+  -meo-word-animation: fill;                    /* fill | fade | bounce | glow | none (word-synced) */
+  -meo-line-animation: fade;                    /* fade | none (line-synced: whole line at once) */
   -meo-glow-color: alpha(var(--pink-light), .55);
   -meo-glow-radius: 3;                          /* 0 disables the glow */
-  -meo-word-lift: 2px;                          /* active word rises */
+  -meo-word-lift: 2px;
   -meo-word-fill: gradient;                     /* gradient | solid */
   -meo-fill-softness: 14px;
   -meo-active-scale: 1.0;
@@ -391,79 +452,92 @@ QLabel[role="chip"] {
   -meo-scroll-duration: 620ms;
   -meo-scroll-easing: out-quint;
   -meo-focus-position: 0.36;                    /* where the active line sits (0 top … 1 bottom) */
-  -meo-distance-fade: 0.16;                     /* extra fade per line away from the active one */
+  -meo-distance-fade: 0.16;
   -meo-align: left;
-  -meo-opposite-align: right;                   /* duet: second singer */
+  -meo-opposite-align: right;                   /* duets: second singer */
   -meo-bg-vocal-color: alpha(var(--pink-light), .55);
   -meo-bg-vocal-scale: 0.62;
   -meo-interlude-dots: true;
   -meo-dot-color: var(--pink-light);
   -meo-credit-color: var(--text-faint);
-  -meo-padding: 28px;
   -meo-hover-color: alpha(var(--pink-light), .55);   /* click a line to seek */
-  -meo-line-sync-fill: true;                    /* line-synced lyrics fill as a block */
   -meo-empty-color: var(--text-faint);
 }
 
-#LyricsView {
-  -meo-font-size: 34px;
-  -meo-line-spacing: 22px;
-  -meo-padding: 48px;
+/* frequency line shown when a song has no lyrics (changes every 0.1 s) */
+#FullVisualizer {
+  -meo-line-color: var(--pink-light);
+  -meo-fill-color: alpha(var(--red), .25);
+  -meo-line-width: 3px;
+  -meo-bands: 48;
+  -meo-amplitude: 0.75;
+  -meo-mirror: false;
 }
 
-#MiniLyrics, #PanelLyrics {
-  -meo-font-size: 20px;
-  -meo-line-spacing: 12px;
-  -meo-padding: 6px;
-  -meo-focus-position: 0.30;
-  -meo-glow-radius: 2;
-}
+/* ---------------------------------------------------------------- settings */
 
-#LyricsStatus, #MiniLyricsStatus {
-  color: var(--text-faint);
+#SettingsNav {
+  background: alpha(var(--wine-0), .25);
+  border-right: 1px solid var(--border);
+}
+QPushButton[role="settings-nav"] {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+QPushButton[role="settings-nav"]:hover { background: alpha(var(--red), .12); color: var(--text); }
+QPushButton[role="settings-nav"][active="true"] { background: alpha(var(--red), .26); color: var(--text); }
+
+#SettingRow {
+  background: alpha(var(--wine-3), .4);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+QLabel[role="setting-title"] { font-size: 14px; font-weight: 600; }
+QLabel[role="setting-desc"]  { font-size: 12px; color: var(--text-faint); }
+#SettingReset { -meo-icon-size: 14px; }
+
+/* ---------------------------------------------------------------- developer mode */
+
+QTabWidget::pane { border: 1px solid var(--border); border-radius: 10px; top: -1px; }
+QTabBar::tab {
+  background: transparent;
+  color: var(--text-dim);
+  padding: 7px 12px;
+  border-radius: 8px;
+  margin-right: 2px;
+}
+QTabBar::tab:selected { background: alpha(var(--red), .25); color: var(--text); }
+#DevText { background: alpha(var(--wine-0), .7); border-radius: 10px; }
+#FpsMeter {
+  background: alpha(#000000, .55);
+  color: #9cff9c;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: "JetBrains Mono", monospace;
   font-size: 11px;
 }
 
-/* ---------------------------------------------------------------- player bar */
+/* ---------------------------------------------------------------- tutorial */
 
-#PlayerBar {
-  background: alpha(var(--wine-0), .78);
-  border-top: 1px solid var(--border);
-  min-height: 86px;
-  max-height: 86px;
-  -meo-enter: slide-up;
-  -meo-enter-duration: 600ms;
-  -meo-enter-easing: out-expo;
+#Tour {
+  -meo-dim-color: alpha(#000000, .62);
+  -meo-spot-color: alpha(var(--pink-light), .9);
+  -meo-spot-radius: 14px;
 }
-
-#PlayerCover { -meo-radius: 10px; -meo-crossfade: 400ms; -meo-placeholder: var(--wine-3); -meo-placeholder-icon: var(--text-faint); }
-#BarTitle  { font-size: 14px; font-weight: 700; }
-#BarArtist { font-size: 12px; color: var(--text-dim); }
-#TimeElapsed, #TimeTotal { font-size: 11px; color: var(--text-faint); min-width: 38px; }
-
-#SeekBar, #VolumeBar {
-  min-height: 18px;
-  -meo-track-color: alpha(var(--text), .14);
-  -meo-buffer-color: alpha(var(--text), .2);
-  -meo-fill-color: var(--red);
-  -meo-fill-color-2: var(--pink-light);   /* gradient end; remove for solid */
-  -meo-handle-color: #ffffff;
-  -meo-handle-size: 12px;
-  -meo-height: 4px;
-  -meo-hover-height: 6px;
-  -meo-radius: 3px;
-  -meo-handle-on-hover: true;
-  -meo-smooth: 140ms;                     /* value easing */
+#TourBubble {
+  background: var(--wine-2);
+  border: 1px solid alpha(var(--pink-light), .3);
+  border-radius: 16px;
+  -meo-enter: fade;
+  -meo-enter-duration: 260ms;
 }
-
-#VolumeBar { min-width: 96px; max-width: 120px; }
-
-/* ---------------------------------------------------------------- panels for other layouts */
-
-#QueuePanel, #LyricsPanel {
-  background: alpha(var(--wine-0), .3);
-  border-left: 1px solid var(--border);
-}
+#TourTitle { font-size: 17px; font-weight: 800; color: var(--pink-light); }
+#TourText  { font-size: 13px; color: var(--text-dim); }
 
 /* ---------------------------------------------------------------- scrollbars */
 
@@ -473,15 +547,15 @@ QScrollArea > QWidget > QWidget { background: transparent; }
 QScrollBar:vertical { background: transparent; width: 10px; margin: 4px 2px; }
 QScrollBar::handle:vertical { background: alpha(var(--pink-light), .16); border-radius: 3px; min-height: 40px; }
 QScrollBar::handle:vertical:hover { background: alpha(var(--pink-light), .32); }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0 4px; }
+QScrollBar::handle:horizontal { background: alpha(var(--pink-light), .16); border-radius: 3px; min-width: 40px; }
+QScrollBar::handle:horizontal:hover { background: alpha(var(--pink-light), .32); }
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
-QScrollBar:horizontal { height: 0; }
-
-QSplitter::handle { background: transparent; width: 1px; }
 
 /* ---------------------------------------------------------------- dialogs, menus, toast */
 
-QDialog, QMessageBox, QInputDialog { background: var(--wine-2); }
+QDialog, QMessageBox, QInputDialog, QColorDialog { background: var(--wine-2); }
 QMenu {
   background: var(--wine-2);
   border: 1px solid var(--border);
@@ -490,6 +564,8 @@ QMenu {
 }
 QMenu::item { padding: 7px 18px; border-radius: 7px; }
 QMenu::item:selected { background: alpha(var(--red), .25); }
+QMenu::item:disabled { color: var(--text-faint); }
+QMenu::separator { height: 1px; background: var(--border); margin: 5px 8px; }
 
 #Toast {
   background: alpha(var(--wine-4), .96);
@@ -499,5 +575,4 @@ QMenu::item:selected { background: alpha(var(--red), .25); }
   font-weight: 600;
   -meo-show-duration: 260ms;
   -meo-hide-after: 3200ms;
-  -meo-easing: out-back;
 }

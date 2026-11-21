@@ -23,21 +23,30 @@ import (
 //	exports.resolve = (track) => "https://…"  or  { url, headers, page }
 //	exports.home    = () => ({ tracks: [...] })
 //	exports.lyrics  = (q) => ({ format: "ttml", content: "…" })
+//	exports.artwork = (q) => "https://…/cover.jpg"
+//	exports.recommend = (track) => ({ tracks: [...] })
+//	exports.playlists = () => [{ id, title, cover }]
+//	exports.open    = (collection) => ({ ...collection, tracks: [...] })
 //	exports.onEvent = (name, data) => {}
+//
+// dep plugins: require("dep:<id>") loads the entry file of a plugin listed in
+// "requires" (its exports become the module).
 type script struct {
 	m        *Manifest
 	dir      string
 	host     *Host
 	env      *moduleEnv
 	settings func() map[string]string
+	deps     func(id string) (string, *Manifest, error)
 
 	mu      sync.Mutex
 	rt      *goja.Runtime
 	exports *goja.Object
 }
 
-func newScript(m *Manifest, dir string, host *Host, settings func() map[string]string) (*script, error) {
-	s := &script{m: m, dir: dir, host: host, settings: settings, env: &moduleEnv{m: m, dir: dir, host: host}}
+func newScript(m *Manifest, dir string, host *Host, settings func() map[string]string,
+	deps func(id string) (string, *Manifest, error)) (*script, error) {
+	s := &script{m: m, dir: dir, host: host, settings: settings, deps: deps, env: &moduleEnv{m: m, dir: dir, host: host}}
 	if err := s.boot(); err != nil {
 		return nil, err
 	}
@@ -70,13 +79,14 @@ func (s *script) boot() error {
 	_ = rt.Set("app", map[string]any{"version": s.host.Version, "userAgent": s.host.UserAgent, "plugin": s.m.ID})
 	_ = rt.Set("settings", rt.NewDynamicObject(settingsObj{s.settings, rt}))
 
-	var load func(file string) (*goja.Object, error)
-	load = func(file string) (*goja.Object, error) {
-		abs, err := filepath.Abs(filepath.Join(s.dir, file))
+	var require func(name string) (goja.Value, error)
+	var load func(base, file string) (*goja.Object, error)
+	load = func(base, file string) (*goja.Object, error) {
+		abs, err := filepath.Abs(filepath.Join(base, file))
 		if err != nil {
 			return nil, err
 		}
-		root, _ := filepath.Abs(s.dir)
+		root, _ := filepath.Abs(base)
 		if !strings.HasPrefix(abs, root+string(os.PathSeparator)) {
 			return nil, fmt.Errorf("require(%q): outside the plugin folder", file)
 		}
@@ -92,36 +102,79 @@ func (s *script) boot() error {
 		_ = module.Set("exports", exports)
 		cache[abs] = module
 		wrapped := "(function(module, exports, require){" + string(src) + "\n})"
-		fnVal, err := rt.RunScript(file, wrapped)
+		fnVal, err := rt.RunScript(abs, wrapped)
 		if err != nil {
 			return nil, err
 		}
 		fn, _ := goja.AssertFunction(fnVal)
-		if _, err := fn(goja.Undefined(), module, exports, rt.Get("require")); err != nil {
+		// files of a dep plugin require relative to their own folder
+		var req goja.Value = rt.Get("require")
+		if base != s.dir {
+			req = rt.ToValue(func(name string) (goja.Value, error) {
+				if strings.HasPrefix(name, "./") {
+					if !strings.HasSuffix(name, ".js") {
+						name += ".js"
+					}
+					return load(base, name)
+				}
+				return require(name)
+			})
+		}
+		if _, err := fn(goja.Undefined(), module, exports, req); err != nil {
 			return nil, err
 		}
 		return module.Get("exports").ToObject(rt), nil
 	}
-	_ = rt.Set("require", func(name string) (goja.Value, error) {
+	require = func(name string) (goja.Value, error) {
 		if strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../") {
 			if !strings.HasSuffix(name, ".js") {
 				name += ".js"
 			}
-			o, err := load(name)
-			return o, err
+			return load(s.dir, name)
+		}
+		if id, ok := strings.CutPrefix(name, "dep:"); ok {
+			if s.deps == nil {
+				return nil, fmt.Errorf("require(%q): dependencies are not available", name)
+			}
+			dir, dm, err := s.deps(id)
+			if err != nil {
+				return nil, err
+			}
+			if dm.Entry == "" {
+				return nil, fmt.Errorf("dep %s has no entry file", id)
+			}
+			return load(dir, dm.Entry)
 		}
 		mod, err := s.env.newModule(name)
 		if err != nil {
 			return nil, err
 		}
 		return rt.ToValue(mod), nil
-	})
-	exports, err := load(s.m.Entry)
+	}
+	_ = rt.Set("require", require)
+	exports, err := load(s.dir, s.m.Entry)
 	if err != nil {
 		return fmt.Errorf("%s: %w", s.m.Entry, err)
 	}
 	s.rt, s.exports = rt, exports
 	return nil
+}
+
+// Caps lists the functions the script exports.
+func (s *script) Caps() map[string]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	has := func(n string) bool { _, ok := goja.AssertFunction(s.exports.Get(n)); return ok }
+	c := map[string]bool{
+		CapSearch: has("search"), CapHome: has("home"), CapRecommend: has("recommend"),
+		CapPlaylists: has("playlists"), CapOpen: has("open"), CapLyrics: has("lyrics"),
+		CapArtwork: has("artwork"), CapEvents: has("onEvent"),
+		CapLibrary: true,
+	}
+	// a script that searches can play its own tracks (resolve() is optional)
+	c[CapStream] = has("resolve") || c[CapSearch]
+	c[CapMatch] = has("resolve")
+	return c
 }
 
 func isString(v any) bool { _, ok := v.(string); return ok }
@@ -219,6 +272,33 @@ func (s *script) Home(ctx context.Context) (*core.SearchResult, error) {
 		return nil, err
 	}
 	return s.fixTracks(&r), nil
+}
+
+func (s *script) Recommend(ctx context.Context, seed core.Track) (*core.SearchResult, error) {
+	var r core.SearchResult
+	if _, err := s.call(ctx, "recommend", &r, trackArg(seed)); err != nil {
+		return nil, err
+	}
+	return s.fixTracks(&r), nil
+}
+
+func (s *script) Playlists(ctx context.Context) ([]core.Collection, error) {
+	var out []core.Collection
+	_, err := s.call(ctx, "playlists", &out)
+	for i := range out {
+		out[i].Source = s.m.ID
+	}
+	return out, err
+}
+
+func (s *script) Artwork(ctx context.Context, q lyrics.Query) (string, error) {
+	var u string
+	arg := map[string]any{"title": q.Title, "artist": q.Artist, "album": q.Album, "durationMs": q.DurationMs, "isrc": q.ISRC, "videoId": q.VideoID}
+	ok, err := s.call(ctx, "artwork", &u, arg)
+	if !ok || (err == nil && u == "") {
+		return "", lyrics.ErrNotFound
+	}
+	return u, err
 }
 
 func (s *script) Open(ctx context.Context, c core.Collection) (*core.Collection, error) {

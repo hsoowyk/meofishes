@@ -26,6 +26,7 @@ import (
 // Track is a playable item.
 type Track struct {
 	ID         string            `json:"id"`
+	Source     string            `json:"source,omitempty"` // plugin that listed it (set by meofishes)
 	Title      string            `json:"title"`
 	Artist     string            `json:"artist"`
 	Album      string            `json:"album,omitempty"`
@@ -107,6 +108,33 @@ type Context struct {
 	Settings  map[string]string // current settings (see plugin.json "settings")
 }
 
+// Notify sends a notification to meofishes (player plugins send
+// "player.end" with {"reason": "eof"} when a track finishes).
+func (c *Context) Notify(method string, params any) {
+	write(map[string]any{"method": method, "params": params})
+}
+
+// PlayerState is what a player plugin reports for "player.state".
+type PlayerState struct {
+	PositionMs int64   `json:"positionMs"`
+	DurationMs int64   `json:"durationMs"`
+	Paused     bool    `json:"paused"`
+	Idle       bool    `json:"idle"`
+	Volume     float64 `json:"volume"`
+	Buffering  bool    `json:"buffering"`
+}
+
+// Player is implemented by xtm plugins that replace mpv ("player": true in
+// plugin.json). Every function must be set.
+type Player struct {
+	Load   func(ctx *Context, url string, headers map[string]string) error
+	Pause  func(ctx *Context, paused bool) error
+	Stop   func(ctx *Context) error
+	Volume func(ctx *Context, volume float64) error // 0..100
+	Seek   func(ctx *Context, positionMs int64) error
+	State  func(ctx *Context) (*PlayerState, error)
+}
+
 // Log writes to the meofishes plugin log.
 func (c *Context) Log(format string, args ...any) {
 	write(map[string]any{"method": "log", "params": map[string]any{"message": fmt.Sprintf(format, args...)}})
@@ -120,6 +148,14 @@ type Plugin struct {
 	Resolve func(ctx *Context, t Track) (*Stream, error)
 	Lyrics  func(ctx *Context, q LyricsQuery) (*Lyrics, error)
 	Event   func(ctx *Context, name string, payload json.RawMessage)
+	// src: tracks similar to a seed track (radio / autoplay)
+	Recommend func(ctx *Context, seed Track) (*SearchResult, error)
+	// src: the user's playlists on the service (tracks are loaded with Open)
+	Playlists func(ctx *Context) ([]Collection, error)
+	// fnt: a cover image URL for a track
+	Artwork func(ctx *Context, q LyricsQuery) (string, error)
+	// xtm: replaces mpv
+	Player *Player
 	// Init runs once after meofishes sent the settings.
 	Init func(ctx *Context) error
 }
@@ -198,7 +234,9 @@ func handle(p Plugin, ctx *Context, req request) {
 		}
 		var caps []string
 		for name, ok := range map[string]bool{"search": p.Search != nil, "home": p.Home != nil, "open": p.Open != nil,
-			"resolve": p.Resolve != nil, "lyrics": p.Lyrics != nil, "event": p.Event != nil} {
+			"resolve": p.Resolve != nil, "lyrics": p.Lyrics != nil, "events": p.Event != nil,
+			"recommend": p.Recommend != nil, "playlists": p.Playlists != nil, "artwork": p.Artwork != nil,
+			"player": p.Player != nil} {
 			if ok {
 				caps = append(caps, name)
 			}
@@ -246,6 +284,34 @@ func handle(p Plugin, ctx *Context, req request) {
 		} else {
 			result, err = p.Lyrics(ctx, in.Query)
 		}
+	case "recommend":
+		var in struct {
+			Track Track `json:"track"`
+		}
+		_ = json.Unmarshal(req.Params, &in)
+		if p.Recommend == nil {
+			result = SearchResult{}
+		} else {
+			result, err = p.Recommend(ctx, in.Track)
+		}
+	case "playlists":
+		if p.Playlists != nil {
+			result, err = p.Playlists(ctx)
+		}
+	case "artwork":
+		var in struct {
+			Query LyricsQuery `json:"query"`
+		}
+		_ = json.Unmarshal(req.Params, &in)
+		if p.Artwork == nil {
+			err = ErrNotFound
+		} else {
+			var u string
+			u, err = p.Artwork(ctx, in.Query)
+			result = map[string]string{"url": u}
+		}
+	case "player.load", "player.pause", "player.stop", "player.volume", "player.seek", "player.state":
+		result, err = handlePlayer(p.Player, ctx, req)
 	default:
 		err = fmt.Errorf("unknown method %q", req.Method)
 	}
@@ -256,4 +322,31 @@ func handle(p Plugin, ctx *Context, req request) {
 		resp["result"] = result
 	}
 	write(resp)
+}
+
+func handlePlayer(pl *Player, ctx *Context, req request) (any, error) {
+	if pl == nil {
+		return nil, errors.New("this plugin is not a player")
+	}
+	var in struct {
+		URL        string            `json:"url"`
+		Headers    map[string]string `json:"headers"`
+		Paused     bool              `json:"paused"`
+		Volume     float64           `json:"volume"`
+		PositionMs int64             `json:"positionMs"`
+	}
+	_ = json.Unmarshal(req.Params, &in)
+	switch req.Method {
+	case "player.load":
+		return nil, pl.Load(ctx, in.URL, in.Headers)
+	case "player.pause":
+		return nil, pl.Pause(ctx, in.Paused)
+	case "player.stop":
+		return nil, pl.Stop(ctx)
+	case "player.volume":
+		return nil, pl.Volume(ctx, in.Volume)
+	case "player.seek":
+		return nil, pl.Seek(ctx, in.PositionMs)
+	}
+	return pl.State(ctx)
 }

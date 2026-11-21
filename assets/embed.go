@@ -3,5 +3,5 @@ package assets
 
 import "embed"
 
-//go:embed catalog.json themes plugins
+//go:embed catalog.json themes plugins locales
 var FS embed.FS

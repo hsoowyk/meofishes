@@ -3,46 +3,47 @@ package ui
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
 	qt "github.com/mappu/miqt/qt"
-	"github.com/mappu/miqt/qt/mainthread"
 
-	"meofishes/internal/config"
 	"meofishes/internal/core"
-	"meofishes/internal/player"
 	"meofishes/internal/plugin"
 )
 
 func (u *UI) buildPages() *qt.QWidget {
 	u.pages = qt.NewQStackedWidget2()
 	u.pages.SetObjectName("Pages")
-	add := func(id string, w *qt.QWidget) {
+	add := func(id, title string, w *qt.QWidget) {
 		w.SetObjectName(strings.ToUpper(id[:1]) + id[1:] + "Page")
 		u.pageIndex[id] = u.pages.AddWidget(w)
+		u.pageTitles[id] = title
 	}
 	u.home = u.buildHome()
-	add("home", u.home.w)
+	add("home", "", u.home.w.QWidget)
 	u.search = u.buildSearch()
-	add("search", u.search.w)
-	add("queue", u.buildQueuePage())
-	add("lyrics", u.buildLyricsPage())
-	u.plugPg = u.buildPluginsPage()
-	add("plugins", u.plugPg.w.QWidget)
-	u.themePg = u.buildThemesPage()
-	add("themes", u.themePg.w.QWidget)
+	add("search", tr("Search"), u.search.w)
+	u.lib = u.buildLibrary()
+	add("library", tr("Library"), u.lib.w.QWidget)
+	add("playlist", tr("Playlist"), u.lib.detail)
+	add("queue", tr("Queue"), u.buildQueuePage())
+	u.plugPg = u.buildPluginsPage() // shown inside Settings
+	u.themePg = u.buildThemesPage() // shown inside Settings
 	u.setPg = u.buildSettingsPage()
-	add("settings", u.setPg.w.QWidget)
+	add("settings", tr("Settings"), u.setPg.w)
+	u.devPg = u.buildDevPage()
+	add("dev", tr("Developer mode"), u.devPg.w)
 	return u.pages.QWidget
 }
 
 func pageShell(title, subtitle string) (*qt.QWidget, *qt.QVBoxLayout) {
 	w := qt.NewQWidget2()
-	b := vbox(w, []int{34, 0, 26, 0}, 4)
-	b.AddWidget(label(title, "", "title").QWidget)
+	b := vbox(w, []int{28, 18, 22, 0}, 4)
+	if title != "" {
+		b.AddWidget(label(title, "", "title").QWidget)
+	}
 	if subtitle != "" {
 		s := label(subtitle, "", "subtitle")
 		s.SetWordWrap(true)
@@ -62,59 +63,24 @@ func scrollPage(title, subtitle string) (*qt.QScrollArea, *qt.QVBoxLayout) {
 	return sa, b
 }
 
-func (u *UI) wireList(l *TrackList) {
-	l.OnPlay = u.PlayList
-	l.OnQueue = u.Enqueue
-	l.OnRemove = func(i int) {
-		a := u.app
-		if i < 0 || i >= len(a.queue) {
-			return
-		}
-		a.queue = append(a.queue[:i], a.queue[i+1:]...)
-		if i < a.qIndex {
-			a.qIndex--
-		} else if i == a.qIndex {
-			if a.mpv != nil {
-				_ = a.mpv.Stop()
-			}
-			if a.qIndex >= len(a.queue) {
-				a.qIndex = len(a.queue) - 1
-			}
-			if a.qIndex >= 0 {
-				u.playCurrent()
-			}
-		}
-		u.refreshQueue()
-	}
-	if l.QueueMode {
-		l.OnPlay = func(_ []core.Track, i int) {
-			u.emitEnd()
-			u.app.qIndex = i
-			u.playCurrent()
-			u.refreshQueue()
-		}
-	}
-	u.allLists = append(u.allLists, l)
-}
-
-// sourceCombo lists the enabled sources ("*" = all).
+// fillSources lists the plugins that can search ("*" = all).
 func (u *UI) fillSources(cb *qt.QComboBox, withAll bool) {
 	prev := ""
 	if cb.Count() > 0 {
-		v := cb.CurrentData()
-		prev = v.ToString()
+		prev = cb.CurrentData().ToString()
 	}
 	if prev == "" {
-		prev = u.app.cfg.Source
+		prev = u.cfg.Source
 	}
+	cb.BlockSignals(true)
 	cb.Clear()
 	if withAll {
 		v := qt.NewQVariant14("*")
-		cb.AddItem3("Todas as fontes", v)
+		cb.AddItem3(tr("All sources"), v)
 		v.Delete()
 	}
 	sel := 0
-	for _, p := range u.app.plugins.Sources() {
+	for _, p := range u.core.Plugins.Sources() {
 		v := qt.NewQVariant14(p.Manifest.ID)
 		cb.AddItem3(p.Manifest.Name, v)
 		v.Delete()
@@ -123,92 +89,315 @@ func (u *UI) fillSources(cb *qt.QComboBox, withAll bool) {
 		}
 	}
 	cb.SetCurrentIndex(sel)
+	cb.BlockSignals(false)
 }
 
 func comboValue(cb *qt.QComboBox) string {
+	if cb.Count() == 0 {
+		return ""
+	}
 	return cb.CurrentData().ToString()
+}
+
+// ---------------------------------------------------------------- cards
+
+// CardRow is a horizontal, scrollable row of big square covers.
+type CardRow struct {
+	*qt.QScrollArea
+	u      *UI
+	box    *qt.QHBoxLayout
+	cards  []*trackCard
+	tracks []core.Track
+	empty  *qt.QLabel
+	OnPlay func(ts []core.Track, i int)
+}
+
+type trackCard struct {
+	*qt.QWidget
+	cover *CoverView
+	d     *deco
+}
+
+func (u *UI) cardRow(name string) *CardRow {
+	r := &CardRow{QScrollArea: qt.NewQScrollArea2(), u: u, OnPlay: u.PlayList}
+	r.SetObjectName(name)
+	r.SetWidgetResizable(true)
+	r.SetFrameShape(qt.QFrame__NoFrame)
+	r.SetVerticalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	r.SetHorizontalScrollBarPolicy(qt.ScrollBarAsNeeded)
+	size := u.cardSize()
+	r.SetFixedHeight(size + 86)
+	inner := qt.NewQWidget2()
+	inner.SetObjectName("CardRowInner")
+	r.box = hbox(inner, []int{0, 0, 0, 10}, 14)
+	r.empty = label("", "", "hint")
+	r.box.AddWidget(r.empty.QWidget)
+	r.box.AddStretch()
+	r.SetWidget(inner)
+	// vertical wheel scrolls the row sideways
+	r.OnWheelEvent(func(super func(*qt.QWheelEvent), e *qt.QWheelEvent) {
+		d := e.AngleDelta()
+		sb := r.HorizontalScrollBar()
+		if d.X() == 0 && sb.Maximum() > 0 {
+			sb.SetValue(sb.Value() - d.Y())
+			return
+		}
+		super(e)
+	})
+	return r
+}
+
+func (u *UI) cardSize() int {
+	switch u.cfg.Prefs.GridSize {
+	case "small":
+		return 120
+	case "large":
+		return 190
+	}
+	return 154
+}
+
+// SetTracks fills the row.
+func (r *CardRow) SetTracks(ts []core.Track, emptyMsg string) {
+	for _, c := range r.cards {
+		c.cover.dispose()
+		c.d.dispose()
+		c.Hide()
+		c.DeleteLater()
+	}
+	r.cards = nil
+	r.tracks = ts
+	r.empty.SetText(emptyMsg)
+	r.empty.SetVisible(len(ts) == 0)
+	size := r.u.cardSize()
+	for i, t := range ts {
+		c := r.u.newCard(t, size)
+		i := i
+		c.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+			if e.Button() == qt.RightButton {
+				r.u.trackMenuFor(r.tracks, i, r.OnPlay, nil)
+				return
+			}
+			r.OnPlay(r.tracks, i)
+		})
+		r.cards = append(r.cards, c)
+		r.box.InsertWidget(r.box.Count()-1, c.QWidget)
+		key := t.Key()
+		r.u.art.Get(t, func(url string) {
+			if i < len(r.cards) && i < len(r.tracks) && r.tracks[i].Key() == key {
+				r.tracks[i].Cover = url
+				r.u.coverLoader.Into(url, r.cards[i].cover)
+			}
+		})
+	}
+	singleShot(0, func() {
+		for i, c := range r.cards {
+			if i > 12 {
+				break
+			}
+			r.u.Enter(c.QWidget, "Card", i)
+		}
+	})
+}
+
+func (u *UI) newCard(t core.Track, size int) *trackCard {
+	c := &trackCard{QWidget: qt.NewQWidget2()}
+	c.SetObjectName("Card")
+	c.SetAttribute(qt.WA_StyledBackground)
+	c.SetFixedWidth(size + 16)
+	c.d = u.newDeco(c.QWidget, "Card")
+	b := vbox(c.QWidget, []int{8, 8, 8, 8}, 4)
+	c.cover = u.coverView("CardCover", false)
+	c.cover.SetFixedSize2(size, size)
+	u.coverLoader.Into(t.Cover, c.cover)
+	b.AddWidget(c.cover.QWidget)
+	title := label(ellipsis(t.Title, 28), "", "card-title")
+	sub := label(ellipsis(t.Artist, 30), "", "card-sub")
+	title.SetToolTip(t.String())
+	b.AddWidget(title.QWidget)
+	b.AddWidget(sub.QWidget)
+	handCursor(c.QWidget)
+	c.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(true) })
+	c.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(false) })
+	c.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
+		super(e)
+		p := qt.NewQPainter2(c.QPaintDevice)
+		p.SetRenderHint(qt.QPainter__Antialiasing)
+		c.d.paintBg(p, 14)
+		p.End()
+		p.Delete()
+	})
+	return c
 }
 
 // ---------------------------------------------------------------- home
 
 type homePage struct {
-	w       *qt.QWidget
-	greet   *qt.QLabel
-	sources *qt.QComboBox
-	list    *TrackList
-	u       *UI
+	w        *qt.QScrollArea
+	greet    *qt.QLabel
+	box      *qt.QLineEdit
+	recent   *CardRow
+	recs     *CardRow
+	recTitle *qt.QLabel
+	popular  *CardRow
+	sources  *qt.QComboBox
+	popTitle *qt.QLabel
+	u        *UI
+	seq      int
+	lastSeed string
+	popFor   string
 }
 
 func greeting() string {
 	h := time.Now().Hour()
 	switch {
 	case h < 5:
-		return "Boa madrugada"
+		return tr("Good night")
 	case h < 12:
-		return "Bom dia"
+		return tr("Good morning")
 	case h < 18:
-		return "Boa tarde"
+		return tr("Good afternoon")
 	}
-	return "Boa noite"
+	return tr("Good evening")
 }
 
 func (u *UI) buildHome() *homePage {
 	hp := &homePage{u: u}
-	hp.w = qt.NewQWidget2()
-	b := vbox(hp.w, []int{34, 0, 26, 0}, 6)
-	hp.greet = label(greeting(), "Greeting", "")
-	b.AddWidget(hp.greet.QWidget)
-	row := qt.NewQHBoxLayout2()
-	sub := label("Destaques da fonte", "", "subtitle")
-	row.AddWidget2(sub.QWidget, 1)
+	sa, b := scrollPage("", "")
+	hp.w = sa
+	b.SetSpacing(8)
+
+	top := qt.NewQHBoxLayout2()
+	hp.greet = label("", "Greeting", "")
+	top.AddWidget2(hp.greet.QWidget, 1)
+	hp.box = qt.NewQLineEdit2()
+	hp.box.SetObjectName("HomeSearch")
+	hp.box.SetPlaceholderText(tr("Search songs, artists, radios…"))
+	hp.box.SetMinimumWidth(260)
+	hp.box.SetMaximumWidth(380)
+	hp.box.OnReturnPressed(func() {
+		q := strings.TrimSpace(hp.box.Text())
+		if q == "" {
+			return
+		}
+		u.search.box.SetText(q)
+		hp.box.Clear()
+		u.goPage("search")
+		u.doSearch(u.search)
+	})
+	top.AddWidget3(hp.box.QWidget, 0, qt.AlignTop)
+	b.AddLayout(top.QLayout)
+	b.AddSpacing(10)
+
+	b.AddWidget(label(tr("Recently played"), "", "heading").QWidget)
+	hp.recent = u.cardRow("RecentRow")
+	b.AddWidget(hp.recent.QWidget)
+
+	hp.recTitle = label(tr("Recommended for you"), "", "heading")
+	b.AddWidget(hp.recTitle.QWidget)
+	hp.recs = u.cardRow("RecommendedRow")
+	b.AddWidget(hp.recs.QWidget)
+
+	pr := qt.NewQHBoxLayout2()
+	hp.popTitle = label(tr("Popular near you"), "", "heading")
+	pr.AddWidget2(hp.popTitle.QWidget, 1)
 	hp.sources = qt.NewQComboBox2()
 	hp.sources.SetObjectName("HomeSource")
-	hp.sources.SetMinimumWidth(220)
-	row.AddWidget(hp.sources.QWidget)
-	b.AddLayout(row.QLayout)
-	hp.list = u.trackList("HomeList")
-	u.wireList(hp.list)
-	b.AddWidget2(hp.list.QWidget, 1)
+	hp.sources.SetMinimumWidth(200)
+	pr.AddWidget(hp.sources.QWidget)
+	b.AddLayout(pr.QLayout)
+	hp.popular = u.cardRow("PopularRow")
+	b.AddWidget(hp.popular.QWidget)
+	b.AddStretch()
+
 	u.fillSources(hp.sources, false)
 	hp.sources.OnCurrentIndexChanged(func(int) {
 		if hp.sources.Count() > 0 {
-			u.app.cfg.Source = comboValue(hp.sources)
-			hp.refresh()
+			u.cfg.Source = comboValue(hp.sources)
+			hp.loadPopular()
 		}
-	})
-	u.app.plugins.OnChange(func() {
-		// may run on a worker goroutine (installs): hop to the UI thread
-		mainthread.Start(func() {
-			u.fillSources(hp.sources, false)
-			if u.search != nil {
-				u.fillSources(u.search.sources, true)
-			}
-		})
 	})
 	return hp
 }
 
 func (hp *homePage) refresh() {
 	u := hp.u
-	hp.greet.SetText(greeting())
+	name := strings.TrimSpace(u.cfg.Prefs.UserName)
+	if name != "" {
+		hp.greet.SetText(greeting() + ", " + name)
+	} else {
+		hp.greet.SetText(greeting())
+	}
+	recent := u.core.Library.Recent(20)
+	hp.recent.SetTracks(recent, tr("Nothing yet. Play something!"))
+	seed := ""
+	if len(recent) > 0 {
+		seed = recent[0].Key()
+	}
+	if seed != hp.lastSeed || len(hp.recs.tracks) == 0 {
+		hp.lastSeed = seed
+		hp.loadRecommendations(recent)
+	}
+	if hp.popFor != comboValue(hp.sources) {
+		hp.loadPopular()
+	}
+}
+
+// loadRecommendations asks src plugins for songs like the last played one.
+func (hp *homePage) loadRecommendations(recent []core.Track) {
+	u := hp.u
+	if len(recent) == 0 {
+		hp.recs.SetTracks(nil, tr("Play a song to get recommendations."))
+		return
+	}
+	hp.seq++
+	seq := hp.seq
+	hp.recs.SetTracks(nil, tr("Loading…"))
+	var ts []core.Track
+	var via string
+	u.runAsync(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		var err error
+		ts, via, err = u.core.Plugins.Recommend(ctx, recent[0])
+		return err
+	}, func(err error) {
+		if seq != hp.seq {
+			return
+		}
+		if err != nil {
+			hp.recs.SetTracks(nil, tr("No recommendations yet (install a src plugin with recommendations, e.g. Deezer)."))
+			return
+		}
+		name := via
+		if p := u.core.Plugins.Get(via); p != nil {
+			name = p.Manifest.Name
+		}
+		hp.recTitle.SetText(tr("Recommended for you") + "  ·  " + name)
+		hp.recs.SetTracks(ts, "")
+	})
+}
+
+func (hp *homePage) loadPopular() {
+	u := hp.u
 	id := comboValue(hp.sources)
-	p := u.app.plugins.Get(id)
+	hp.popFor = id
+	p := u.core.Plugins.Get(id)
 	if p == nil {
-		hp.list.SetTracks(nil, "Nenhuma fonte de música ativa. Instale ou ative um plugin em Plugins.")
+		hp.popular.SetTracks(nil, tr("No music source enabled. Install or enable a plugin in Plugins."))
 		return
 	}
-	br := p.Browser()
-	if br == nil {
-		hp.list.SetTracks(nil, "Esta fonte não tem página inicial. Use a busca.")
+	if !p.Can(plugin.CapHome) {
+		hp.popular.SetTracks(nil, tr("This source has no home page. Use the search."))
 		return
 	}
-	hp.list.SetTracks(nil, "Carregando…")
+	hp.popular.SetTracks(nil, tr("Loading…"))
 	var res *core.SearchResult
 	u.runAsync(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
 		var err error
-		res, err = br.Home(ctx)
+		res, err = u.core.Plugins.Home(ctx, p)
 		return err
 	}, func(err error) {
 		if comboValue(hp.sources) != id {
@@ -216,11 +405,11 @@ func (hp *homePage) refresh() {
 		}
 		switch {
 		case err != nil:
-			hp.list.SetTracks(nil, "Erro: "+err.Error())
+			hp.popular.SetTracks(nil, tr("Error: {error}", "error", err.Error()))
 		case res == nil || len(res.Tracks) == 0:
-			hp.list.SetTracks(nil, "Nada por aqui ainda. Tente a busca (Ctrl+F).")
+			hp.popular.SetTracks(nil, tr("Nothing here yet."))
 		default:
-			hp.list.SetTracks(res.Tracks, "")
+			hp.popular.SetTracks(res.Tracks, "")
 		}
 	})
 }
@@ -238,13 +427,14 @@ type searchPage struct {
 
 func (u *UI) buildSearch() *searchPage {
 	sp := &searchPage{}
-	w, b := pageShell("Buscar", "")
+	w, b := pageShell(tr("Search"), "")
 	sp.w = w
 	row := qt.NewQHBoxLayout2()
 	row.SetSpacing(10)
 	sp.box = qt.NewQLineEdit2()
 	sp.box.SetObjectName("SearchBox")
-	sp.box.SetPlaceholderText("Músicas, artistas, rádios…")
+	sp.box.SetPlaceholderText(tr("Songs, artists, radios…"))
+	sp.box.SetClearButtonEnabled(true)
 	row.AddWidget2(sp.box.QWidget, 1)
 	sp.sources = qt.NewQComboBox2()
 	sp.sources.SetObjectName("SourcePicker")
@@ -254,10 +444,9 @@ func (u *UI) buildSearch() *searchPage {
 	sp.info = label("", "SearchInfo", "hint")
 	b.AddWidget(sp.info.QWidget)
 	sp.list = u.trackList("SearchList")
-	u.wireList(sp.list)
 	b.AddWidget2(sp.list.QWidget, 1)
 	u.fillSources(sp.sources, true)
-	sp.list.SetTracks(nil, "Digite algo e aperte Enter.")
+	sp.list.SetTracks(nil, tr("Type something and press Enter."))
 	run := func() { u.doSearch(sp) }
 	sp.box.OnReturnPressed(run)
 	sp.sources.OnCurrentIndexChanged(func(int) {
@@ -277,16 +466,16 @@ func (u *UI) doSearch(sp *searchPage) {
 	seq := sp.seq
 	src := comboValue(sp.sources)
 	var targets []*plugin.Plugin
-	for _, p := range u.app.plugins.Sources() {
+	for _, p := range u.core.Plugins.Sources() {
 		if src == "*" || p.Manifest.ID == src {
 			targets = append(targets, p)
 		}
 	}
 	if len(targets) == 0 {
-		sp.list.SetTracks(nil, "Nenhuma fonte ativa.")
+		sp.list.SetTracks(nil, tr("No source enabled."))
 		return
 	}
-	sp.list.SetTracks(nil, "Buscando…")
+	sp.list.SetTracks(nil, tr("Searching…"))
 	sp.info.SetText("")
 	type result struct {
 		name   string
@@ -302,7 +491,7 @@ func (u *UI) doSearch(sp *searchPage) {
 				defer wg.Done()
 				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 				defer cancel()
-				r, err := p.Source().Search(ctx, q)
+				r, err := u.core.Plugins.Search(ctx, p, q)
 				results[i] = result{name: p.Manifest.Name, err: err}
 				if r != nil {
 					results[i].tracks = r.Tracks
@@ -328,223 +517,47 @@ func (u *UI) doSearch(sp *searchPage) {
 			}
 		}
 		sp.info.SetText(strings.Join(notes, " · "))
-		sp.list.SetTracks(all, "Nada encontrado para “"+q+"”.")
+		sp.list.SetTracks(all, tr("Nothing found for “{query}”.", "query", q))
 	})
 }
 
-// ---------------------------------------------------------------- queue & lyrics pages
+// ---------------------------------------------------------------- queue
 
 func (u *UI) buildQueuePage() *qt.QWidget {
-	w, b := pageShell("Fila", "O que vem a seguir. Duplo clique para pular para uma música.")
+	w, b := pageShell(tr("Queue"), tr("What comes next. Drag to reorder, double-click to jump, right-click for more."))
 	row := qt.NewQHBoxLayout2()
-	clear := qt.NewQPushButton3("Limpar fila")
-	clear.OnClicked(func() {
-		a := u.app
-		if cur := a.current(); cur != nil {
-			a.queue = []core.Track{*cur}
-			a.qIndex = 0
-		} else {
-			a.queue, a.qIndex = nil, -1
+	row.SetSpacing(8)
+	clear := qt.NewQPushButton3(tr("Clear queue"))
+	clear.OnClicked(u.clearQueue)
+	save := qt.NewQPushButton3(tr("Save as playlist"))
+	save.OnClicked(func() {
+		if len(u.queue) > 0 {
+			u.newPlaylistDialog(u.queue)
 		}
-		u.refreshQueue()
 	})
-	row.AddWidget(clear.QWidget)
+	shuffle := qt.NewQPushButton3(tr("Shuffle upcoming"))
+	shuffle.OnClicked(func() { u.shuffleRest(); u.refreshQueue() })
+	for _, x := range []*qt.QPushButton{clear, save, shuffle} {
+		row.AddWidget(x.QWidget)
+	}
 	row.AddStretch()
 	b.AddLayout(row.QLayout)
 	q := u.trackList("QueueList")
 	q.QueueMode = true
-	u.wireList(q)
+	q.Reorderable = true
+	q.OnMove = u.MoveInQueue
+	q.OnRemove = u.RemoveFromQueue
+	q.RemoveLabel = tr("Remove from queue")
+	q.OnPlay = func(_ []core.Track, i int) {
+		u.emitEnd()
+		u.qIndex = i
+		u.playCurrent()
+		u.refreshQueue()
+	}
 	u.queueLists = append(u.queueLists, q)
 	b.AddWidget2(q.QWidget, 1)
-	q.SetTracks(nil, "A fila está vazia.")
+	q.SetTracks(nil, tr("The queue is empty."))
 	return w
-}
-
-func (u *UI) buildLyricsPage() *qt.QWidget {
-	w := qt.NewQWidget2()
-	b := vbox(w, []int{0, 0, 0, 12}, 4)
-	lv := u.lyricsView("LyricsView")
-	u.addLyricsView(lv)
-	b.AddWidget2(lv.QWidget, 1)
-	row := qt.NewQHBoxLayout2()
-	row.SetContentsMargins(48, 0, 26, 0)
-	st := label("", "LyricsStatus", "")
-	st.SetWordWrap(true)
-	u.lyricStatus = append(u.lyricStatus, st)
-	row.AddWidget2(st.QWidget, 1)
-	retry := qt.NewQPushButton3("Buscar de novo")
-	retry.SetToolTip("Ignora o cache e consulta os provedores outra vez")
-	retry.OnClicked(func() {
-		if cur := u.app.current(); cur != nil {
-			gen := u.app.gen
-			track := *cur
-			u.setLyrics(nil, "Procurando letra…")
-			var l *core.Lyrics
-			var info string
-			u.runAsync(func() error {
-				var err error
-				l, info, err = u.app.plugins.FindLyricsFresh(context.Background(), track)
-				return err
-			}, func(err error) {
-				if gen != u.app.gen {
-					return
-				}
-				u.app.lyricsInfo = info
-				if err != nil {
-					u.setLyrics(nil, "Sem letra para esta música")
-				} else {
-					u.setLyrics(l, "")
-				}
-				u.toast(info)
-			})
-		}
-	})
-	row.AddWidget(retry.QWidget)
-	b.AddLayout(row.QLayout)
-	return w
-}
-
-// ---------------------------------------------------------------- settings
-
-type settingsPage struct {
-	w        *qt.QScrollArea
-	email    *qt.QLineEdit
-	url      *qt.QLineEdit
-	catalogs *qt.QPlainTextEdit
-	order    *qt.QVBoxLayout
-	orderBox *qt.QWidget
-	info     *qt.QLabel
-	logs     *qt.QPlainTextEdit
-	u        *UI
-}
-
-func (u *UI) buildSettingsPage() *settingsPage {
-	sp := &settingsPage{u: u}
-	sa, b := scrollPage("Ajustes", "")
-	sp.w = sa
-
-	b.AddWidget(label("Contato (User-Agent)", "", "heading").QWidget)
-	hint := label("Alguns provedores pedem que o app se identifique. O lrc.red exige nome do app, um link e um e-mail de contato; "+
-		"o Unison pede nome e link. Sem e-mail, o lrc.red fica desligado.", "", "hint")
-	hint.SetWordWrap(true)
-	b.AddWidget(hint.QWidget)
-	sp.email = qt.NewQLineEdit2()
-	sp.email.SetPlaceholderText("seu e-mail de contato")
-	sp.url = qt.NewQLineEdit2()
-	sp.url.SetPlaceholderText("link do app/projeto (ex.: https://github.com/voce/meofishes)")
-	b.AddWidget(sp.email.QWidget)
-	b.AddWidget(sp.url.QWidget)
-	ua := label("", "UserAgentPreview", "hint")
-	b.AddWidget(ua.QWidget)
-	saveContact := qt.NewQPushButton3("Salvar contato")
-	role(saveContact.QWidget, "primary")
-	saveContact.OnClicked(func() {
-		u.app.cfg.ContactEmail = strings.TrimSpace(sp.email.Text())
-		u.app.cfg.ContactURL = strings.TrimSpace(sp.url.Text())
-		u.app.host.UserAgent = u.app.cfg.UserAgent()
-		_ = u.app.cfg.Save()
-		ua.SetText("User-Agent: " + u.app.host.UserAgent)
-		u.toast("Contato salvo")
-	})
-	b.AddWidget3(saveContact.QWidget, 0, qt.AlignLeft)
-
-	b.AddWidget(label("Prioridade das letras", "", "heading").QWidget)
-	h2 := label("Ordem em que os plugins de letras são consultados. Vence o primeiro com sincronia por palavra. "+
-		"A ordem dos provedores dentro do Meo Lyrics é configurada no próprio plugin.", "", "hint")
-	h2.SetWordWrap(true)
-	b.AddWidget(h2.QWidget)
-	sp.orderBox = qt.NewQWidget2()
-	sp.order = vbox(sp.orderBox, nil, 6)
-	b.AddWidget(sp.orderBox)
-
-	b.AddWidget(label("Catálogos de temas e plugins", "", "heading").QWidget)
-	h3 := label("URLs de index.json extras (uma por linha). O catálogo oficial já vem embutido.", "", "hint")
-	b.AddWidget(h3.QWidget)
-	sp.catalogs = qt.NewQPlainTextEdit2()
-	sp.catalogs.SetMaximumHeight(110)
-	sp.catalogs.SetPlaceholderText("https://exemplo.com/meofishes/index.json")
-	b.AddWidget(sp.catalogs.QWidget)
-	saveCat := qt.NewQPushButton3("Salvar catálogos")
-	saveCat.OnClicked(func() {
-		var list []string
-		for _, l := range strings.Split(sp.catalogs.ToPlainText(), "\n") {
-			if l = strings.TrimSpace(l); l != "" {
-				list = append(list, l)
-			}
-		}
-		u.app.cfg.Catalogs = list
-		u.app.catalog.Refresh()
-		_ = u.app.cfg.Save()
-		u.toast("Catálogos salvos")
-	})
-	b.AddWidget3(saveCat.QWidget, 0, qt.AlignLeft)
-
-	b.AddWidget(label("Sobre", "", "heading").QWidget)
-	sp.info = label("", "AboutInfo", "hint")
-	sp.info.SetWordWrap(true)
-	sp.info.SetTextInteractionFlags(qt.TextSelectableByMouse)
-	b.AddWidget(sp.info.QWidget)
-
-	b.AddWidget(label("Registro", "", "heading").QWidget)
-	sp.logs = qt.NewQPlainTextEdit2()
-	sp.logs.SetReadOnly(true)
-	sp.logs.SetMinimumHeight(200)
-	b.AddWidget(sp.logs.QWidget)
-	b.AddStretch()
-	return sp
-}
-
-func (sp *settingsPage) refresh() {
-	u := sp.u
-	a := u.app
-	sp.email.SetText(a.cfg.ContactEmail)
-	sp.url.SetText(a.cfg.ContactURL)
-	sp.catalogs.SetPlainText(strings.Join(a.cfg.Catalogs, "\n"))
-	// lyrics order
-	clearLayout(sp.order.QLayout)
-	lps := a.plugins.LyricsPlugins()
-	for i, p := range lps {
-		i, p := i, p
-		row := qt.NewQWidget2()
-		h := hbox(row, nil, 8)
-		h.AddWidget2(label(fmt.Sprintf("%d. %s", i+1, p.Manifest.Name), "", "card-title").QWidget, 1)
-		up := qt.NewQPushButton3("↑")
-		down := qt.NewQPushButton3("↓")
-		up.SetEnabled(i > 0)
-		down.SetEnabled(i < len(lps)-1)
-		move := func(d int) {
-			ids := make([]string, len(lps))
-			for k, x := range lps {
-				ids[k] = x.Manifest.ID
-			}
-			ids[i], ids[i+d] = ids[i+d], ids[i]
-			a.cfg.Plugins.LyricsOrder = ids
-			_ = a.cfg.Save()
-			sp.refresh()
-		}
-		up.OnClicked(func() { move(-1) })
-		down.OnClicked(func() { move(1) })
-		h.AddWidget(up.QWidget)
-		h.AddWidget(down.QWidget)
-		sp.order.AddWidget(row)
-	}
-	if len(lps) == 0 {
-		sp.order.AddWidget(label("Nenhum plugin de letras ativo.", "", "hint").QWidget)
-	}
-	yt := "não encontrado"
-	if p := plugin.YtdlpPath(); p != "" {
-		yt = p
-	}
-	mpv := "não encontrado"
-	if player.Available() {
-		mpv, _ = exec.LookPath("mpv")
-	}
-	sp.info.SetText(fmt.Sprintf("meofishes %s\nConfiguração: %s\nPlugins: %s\nTemas: %s\nCache: %s\nmpv: %s\nyt-dlp: %s\nMódulos Go para plugins: %s",
-		config.Version, a.paths.Config, a.paths.Plugins, a.paths.Themes, a.paths.Cache, mpv, yt, strings.Join(plugin.ModuleNames(), ", ")))
-	a.logMu.Lock()
-	logs := append([]string(nil), a.logs...)
-	a.logMu.Unlock()
-	sp.logs.SetPlainText(strings.Join(logs, "\n"))
 }
 
 // clearLayout deletes every widget of a layout.
@@ -554,6 +567,8 @@ func clearLayout(l *qt.QLayout) {
 		if w := it.Widget(); w != nil {
 			w.Hide()
 			w.DeleteLater()
+		} else if sub := it.Layout(); sub != nil {
+			clearLayout(sub)
 		}
 		it.Delete()
 	}

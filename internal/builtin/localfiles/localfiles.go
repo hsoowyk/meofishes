@@ -21,15 +21,15 @@ const ID = "local-files"
 
 var Manifest = plugin.Manifest{
 	ID:          ID,
-	Name:        "Arquivos locais",
+	Name:        "Local files",
 	Version:     "1.0.0",
 	Author:      "meofishes",
-	Description: "Toca as músicas das suas pastas (mp3, flac, ogg, opus, m4a, wav…), lendo as tags e capas embutidas.",
-	Types:       []string{plugin.TypeSource},
+	Description: "Plays the music in your folders (mp3, flac, ogg, opus, m4a, wav…), reading tags and embedded covers.",
+	Types:       []string{plugin.TypeFnt, plugin.TypeSrc},
 	Runtime:     plugin.RuntimeBuiltin,
 	Settings: []plugin.Setting{
-		{Key: "folders", Label: "Pastas de música", Type: "list", Default: defaultFolders(),
-			Description: "Separe várias pastas com ';'."},
+		{Key: "folders", Label: "Music folders", Type: "list", Default: defaultFolders(),
+			Description: "Separate folders with ';'."},
 	},
 }
 

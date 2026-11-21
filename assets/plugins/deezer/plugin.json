@@ -1,0 +1,44 @@
+{
+  "id": "deezer",
+  "name": "Deezer (search & charts)",
+  "version": "1.0.0",
+  "author": "meofishes",
+  "description": "Search, charts and artist radios from the public Deezer API, with real album covers. Metadata only: tracks are played through an fnt plugin with \"match\" (e.g. yt-dlp). 100% declarative.",
+  "homepage": "https://developers.deezer.com/api",
+  "types": ["src"],
+  "runtime": "declarative",
+  "hosts": ["api.deezer.com"],
+  "settings": [
+    { "key": "limit", "label": "Results", "type": "number", "default": "40" },
+    { "key": "chart", "label": "Chart genre id on the home page (0 = all)", "type": "number", "default": "0" }
+  ],
+  "source": {
+    "baseUrl": "https://api.deezer.com",
+    "search": {
+      "url": "/search?q={{query}}&limit={{settings.limit}}",
+      "items": "data",
+      "map": {
+        "id": "id", "title": "title", "artist": "artist.name", "album": "album.title",
+        "cover": "album.cover_xl || album.cover_big", "durationSec": "duration", "isrc": "isrc",
+        "artistId": "artist.id"
+      }
+    },
+    "home": {
+      "url": "/chart/{{settings.chart}}/tracks?limit={{settings.limit}}",
+      "items": "data",
+      "map": {
+        "id": "id", "title": "title", "artist": "artist.name", "album": "album.title",
+        "cover": "album.cover_xl || album.cover_big", "durationSec": "duration", "artistId": "artist.id"
+      }
+    },
+    "recommend": {
+      "url": "/artist/{{track.extra.artistId}}/radio?limit=25",
+      "items": "data",
+      "map": {
+        "id": "id", "title": "title", "artist": "artist.name", "album": "album.title",
+        "cover": "album.cover_xl || album.cover_big", "durationSec": "duration", "artistId": "artist.id"
+      }
+    },
+    "resolver": "match"
+  }
+}

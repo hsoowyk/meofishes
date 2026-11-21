@@ -9,6 +9,7 @@ import (
 	qt "github.com/mappu/miqt/qt"
 
 	"meofishes/internal/catalog"
+	"meofishes/internal/config"
 	"meofishes/internal/plugin"
 	"meofishes/internal/theme"
 )
@@ -24,8 +25,44 @@ func card(active bool) (*qt.QFrame, *qt.QVBoxLayout) {
 
 func chip(text string) *qt.QLabel { return label(text, "", "chip") }
 
-var typeNames = map[string]string{"source": "MÚSICA", "lyrics": "LETRAS", "layout": "LAYOUT", "hook": "EVENTOS"}
-var runtimeNames = map[string]string{"declarative": "declarativo", "script": "script JS", "process": "processo", "builtin": "embutido"}
+// typeHelp explains each plugin type code (tooltips of the chips).
+func typeHelp(t string) string {
+	switch t {
+	case plugin.TypeFnt:
+		return tr("fnt: sources of music, video, lyrics and covers")
+	case plugin.TypeSrc:
+		return tr("src: search, home page, recommendations and playlists")
+	case plugin.TypeAni:
+		return tr("ani: changes the app's animations")
+	case plugin.TypeDep:
+		return tr("dep: tools and libraries for other plugins")
+	case plugin.TypeXtm:
+		return tr("xtm: extreme changes (another player, another icon pack)")
+	case plugin.TypeEvt:
+		return tr("evt: reacts to what you play (scrobbling…)")
+	}
+	return t
+}
+
+func typeChip(t string) *qt.QLabel {
+	c := chip("[" + t + "]")
+	c.SetToolTip(typeHelp(t))
+	return c
+}
+
+func runtimeName(r string) string {
+	switch r {
+	case "declarative", "":
+		return tr("declarative")
+	case "script":
+		return tr("JS script")
+	case "process":
+		return tr("process")
+	case "builtin":
+		return tr("built-in")
+	}
+	return r
+}
 
 func (u *UI) openFolder(dir string) {
 	url := qt.QUrl_FromLocalFile(dir)
@@ -42,14 +79,13 @@ type pluginsPage struct {
 	w       *qt.QScrollArea
 	list    *qt.QVBoxLayout
 	catalog *qt.QVBoxLayout
-	layouts *qt.QComboBox
 	u       *UI
 	busy    bool
 }
 
 func (u *UI) buildPluginsPage() *pluginsPage {
 	pp := &pluginsPage{u: u}
-	sa, b := scrollPage("Plugins", "Fontes de música, letras, layouts e eventos. Tudo que o meofishes toca vem de um plugin.")
+	sa, b := scrollPage(tr("Plugins"), tr("Everything meofishes plays comes from a plugin. The [codes] say what each one is allowed to do."))
 	pp.w = sa
 
 	actions := qt.NewQHBoxLayout2()
@@ -58,26 +94,26 @@ func (u *UI) buildPluginsPage() *pluginsPage {
 		text string
 		fn   func()
 	}{
-		{"Instalar .zip…", func() {
-			f := qt.QFileDialog_GetOpenFileName4(u.win.QWidget, "Instalar plugin", homeDir(), "Plugin (*.zip)")
+		{tr("Install .zip…"), func() {
+			f := qt.QFileDialog_GetOpenFileName4(u.win.QWidget, tr("Install plugin"), homeDir(), tr("Plugin (*.zip)"))
 			if f != "" {
 				pp.install(f, "")
 			}
 		}},
-		{"Instalar pasta…", func() {
-			d := qt.QFileDialog_GetExistingDirectory2(u.win.QWidget, "Pasta com plugin.json")
+		{tr("Install folder…"), func() {
+			d := qt.QFileDialog_GetExistingDirectory2(u.win.QWidget, tr("Folder with plugin.json"))
 			if d != "" {
 				pp.install(d, "")
 			}
 		}},
-		{"Instalar de URL…", func() {
-			url := qt.QInputDialog_GetText(u.win.QWidget, "Instalar de URL", "URL de um .zip com plugin.json:")
+		{tr("Install from URL…"), func() {
+			url := qt.QInputDialog_GetText(u.win.QWidget, tr("Install from URL"), tr("URL of a .zip with plugin.json:"))
 			if strings.TrimSpace(url) != "" {
 				pp.install(strings.TrimSpace(url), "")
 			}
 		}},
-		{"Recarregar", func() { u.app.plugins.Load(); pp.refresh(); u.toast("Plugins recarregados") }},
-		{"Abrir pasta", func() { u.openFolder(u.app.paths.Plugins) }},
+		{tr("Reload"), func() { u.core.Plugins.Load(); pp.refresh(); u.toast(tr("Plugins reloaded")) }},
+		{tr("Open folder"), func() { u.openFolder(u.core.Paths.Plugins) }},
 	} {
 		btn := qt.NewQPushButton3(a.text)
 		btn.OnClicked(a.fn)
@@ -86,31 +122,11 @@ func (u *UI) buildPluginsPage() *pluginsPage {
 	actions.AddStretch()
 	b.AddLayout(actions.QLayout)
 
-	b.AddWidget(label("Layout da interface", "", "heading").QWidget)
-	pp.layouts = qt.NewQComboBox2()
-	pp.layouts.SetObjectName("LayoutPicker")
-	pp.layouts.SetMaximumWidth(360)
-	b.AddWidget(pp.layouts.QWidget)
-	pp.layouts.OnCurrentIndexChanged(func(int) {
-		if pp.busy || pp.layouts.Count() == 0 {
-			return
-		}
-		id := comboValue(pp.layouts)
-		if id == u.app.cfg.Plugins.Layout {
-			return
-		}
-		u.app.cfg.Plugins.Layout = id
-		_ = u.app.cfg.Save()
-		u.applyLayout()
-		u.enterAll()
-		u.toast("Layout aplicado")
-	})
-
-	b.AddWidget(label("Instalados", "", "heading").QWidget)
+	b.AddWidget(label(tr("Installed"), "", "heading").QWidget)
 	lw := qt.NewQWidget2()
 	pp.list = vbox(lw, nil, 10)
 	b.AddWidget(lw)
-	b.AddWidget(label("Catálogo", "", "heading").QWidget)
+	b.AddWidget(label(tr("Catalog"), "", "heading").QWidget)
 	cw := qt.NewQWidget2()
 	pp.catalog = vbox(cw, nil, 10)
 	b.AddWidget(cw)
@@ -118,51 +134,49 @@ func (u *UI) buildPluginsPage() *pluginsPage {
 	return pp
 }
 
-func homeDir() string { h, _ := os.UserHomeDir(); return h }
-
 // install installs from a path/URL, asking before running build commands.
 func (pp *pluginsPage) install(src, name string) {
 	u := pp.u
-	u.toast("Instalando " + firstNonEmpty(name, filepath.Base(src)) + "…")
+	u.toast(tr("Installing {name}…", "name", firstNonEmpty(name, filepath.Base(src))))
 	var m *plugin.Manifest
 	u.runAsync(func() error {
 		var err error
-		m, err = u.app.plugins.InstallFrom(src)
+		m, err = u.core.Plugins.InstallFrom(src)
 		return err
 	}, func(err error) {
 		if err != nil {
-			qt.QMessageBox_Warning(u.win.QWidget, "Não foi possível instalar", err.Error())
+			qt.QMessageBox_Warning(u.win.QWidget, tr("Could not install"), err.Error())
 			return
 		}
 		if m.Runtime == plugin.RuntimeProcess {
-			msg := fmt.Sprintf("“%s” é um plugin de processo: ele roda como um programa no seu computador.", m.Name)
+			msg := tr("“{name}” is a process plugin: it runs as a program on your computer.", "name", m.Name)
 			if m.Build != "" {
-				msg += "\n\nPara funcionar, ele precisa ser compilado com o comando:\n\n    " + m.Build + "\n\nSó continue se você confia na origem deste plugin. Compilar agora?"
-				if u.confirm("Compilar plugin?", msg) {
+				msg += "\n\n" + tr("It has to be built with this command:") + "\n\n    " + m.Build + "\n\n" + tr("Only continue if you trust where this plugin came from. Build it now?")
+				if u.confirm(tr("Build plugin?"), msg) {
 					pp.build(m)
 					return
 				}
-				u.app.plugins.SetEnabled(m.ID, false)
+				u.core.Plugins.SetEnabled(m.ID, false)
 			}
 		}
-		u.toast("Plugin instalado: " + m.Name)
+		u.toast(tr("Plugin installed: {name}", "name", m.Name))
 		pp.refresh()
 	})
 }
 
 func (pp *pluginsPage) build(m *plugin.Manifest) {
 	u := pp.u
-	u.toast("Compilando " + m.Name + "…")
+	u.toast(tr("Building {name}…", "name", m.Name))
 	var out string
 	u.runAsync(func() error {
 		var err error
-		out, err = u.app.plugins.Build(m.ID)
+		out, err = u.core.Plugins.Build(m.ID)
 		return err
 	}, func(err error) {
 		if err != nil {
-			qt.QMessageBox_Warning(u.win.QWidget, "Falha ao compilar", err.Error()+"\n\n"+ellipsis(out, 1500))
+			qt.QMessageBox_Warning(u.win.QWidget, tr("Build failed"), err.Error()+"\n\n"+ellipsis(out, 1500))
 		} else {
-			u.toast(m.Name + " compilado e ativo")
+			u.toast(tr("{name} built and enabled", "name", m.Name))
 		}
 		pp.refresh()
 	})
@@ -179,31 +193,14 @@ func firstNonEmpty(s ...string) string {
 
 func (pp *pluginsPage) refresh() {
 	u := pp.u
-	a := u.app
-	// layout picker
-	pp.busy = true
-	pp.layouts.Clear()
-	v := qt.NewQVariant14("")
-	pp.layouts.AddItem3("Padrão do meofishes", v)
-	v.Delete()
-	for _, p := range a.plugins.Layouts() {
-		v := qt.NewQVariant14(p.Manifest.ID)
-		pp.layouts.AddItem3(p.Manifest.Name, v)
-		v.Delete()
-		if p.Manifest.ID == a.cfg.Plugins.Layout {
-			pp.layouts.SetCurrentIndex(pp.layouts.Count() - 1)
-		}
-	}
-	pp.busy = false
-
 	clearLayout(pp.list.QLayout)
 	installed := map[string]string{}
-	for _, p := range a.plugins.All() {
+	for _, p := range u.core.Plugins.All() {
 		installed[p.Manifest.ID] = p.Manifest.Version
 		pp.list.AddWidget(pp.pluginCard(p))
 	}
 	clearLayout(pp.catalog.QLayout)
-	entries, errs := a.catalog.List("plugin", a.cfg.Catalogs, a.host.UserAgent)
+	entries, errs := u.core.Catalog.List("plugin", u.cfg.Catalogs, config.UserAgent)
 	shown := 0
 	for _, e := range entries {
 		if ver, ok := installed[e.ID]; ok && ver == e.Version {
@@ -213,7 +210,7 @@ func (pp *pluginsPage) refresh() {
 		shown++
 	}
 	if shown == 0 {
-		pp.catalog.AddWidget(label("Tudo do catálogo já está instalado.", "", "hint").QWidget)
+		pp.catalog.AddWidget(label(tr("Everything in the catalog is installed."), "", "hint").QWidget)
 	}
 	for _, err := range errs {
 		pp.catalog.AddWidget(label(err.Error(), "", "card-error").QWidget)
@@ -223,29 +220,22 @@ func (pp *pluginsPage) refresh() {
 func (pp *pluginsPage) pluginCard(p *plugin.Plugin) *qt.QWidget {
 	u := pp.u
 	m := p.Manifest
-	enabled := u.app.plugins.Enabled(m.ID)
+	enabled := u.core.Plugins.Enabled(m.ID)
 	f, b := card(enabled && p.Err == nil)
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(8)
 	top.AddWidget(label(m.Name, "", "card-title").QWidget)
 	for _, t := range m.Types {
-		top.AddWidget(chip(typeNames[t]).QWidget)
+		top.AddWidget(typeChip(t).QWidget)
 	}
-	rt := m.Runtime
-	if rt == "" {
-		rt = "declarative"
-	}
-	top.AddWidget(chip(runtimeNames[rt]).QWidget)
+	top.AddWidget(chip(runtimeName(m.Runtime)).QWidget)
 	top.AddStretch()
-	tog := qt.NewQCheckBox3("Ativo")
+	tog := qt.NewQCheckBox3(tr("Enabled"))
 	tog.SetChecked(enabled)
 	tog.OnToggled(func(on bool) {
-		err := u.app.plugins.SetEnabled(m.ID, on)
+		err := u.core.Plugins.SetEnabled(m.ID, on)
 		if err != nil {
 			u.toast(m.Name + ": " + err.Error())
-		}
-		if m.Has(plugin.TypeLayout) && u.app.cfg.Plugins.Layout == m.ID {
-			u.applyLayout()
 		}
 		singleShot(0, pp.refresh)
 	})
@@ -256,13 +246,21 @@ func (pp *pluginsPage) pluginCard(p *plugin.Plugin) *qt.QWidget {
 		sub += " · " + m.Author
 	}
 	if len(m.Modules) > 0 {
-		sub += " · módulos Go: " + strings.Join(m.Modules, ", ")
+		sub += " · " + tr("Go modules:") + " " + strings.Join(m.Modules, ", ")
 	}
 	b.AddWidget(label(sub, "", "card-sub").QWidget)
 	if m.Description != "" {
 		d := label(m.Description, "", "card-sub")
 		d.SetWordWrap(true)
 		b.AddWidget(d.QWidget)
+	}
+	if caps := p.Caps(); len(caps) > 0 {
+		b.AddWidget(label(tr("Provides: {caps}", "caps", strings.Join(caps, ", ")), "", "card-sub").QWidget)
+	}
+	if den := p.Denied(); len(den) > 0 {
+		w := label(tr("Not allowed by its types: {caps}", "caps", strings.Join(den, ", ")), "", "card-error")
+		w.SetWordWrap(true)
+		b.AddWidget(w.QWidget)
 	}
 	if p.Err != nil {
 		e := label("⚠ "+p.Err.Error(), "", "card-error")
@@ -272,35 +270,31 @@ func (pp *pluginsPage) pluginCard(p *plugin.Plugin) *qt.QWidget {
 	btns := qt.NewQHBoxLayout2()
 	btns.SetSpacing(8)
 	if len(m.Settings) > 0 {
-		cfgBtn := qt.NewQPushButton3("Configurar")
+		cfgBtn := qt.NewQPushButton3(tr("Configure"))
 		cfgBtn.OnClicked(func() { u.pluginSettings(p, pp.refresh) })
 		btns.AddWidget(cfgBtn.QWidget)
 	}
 	if m.Build != "" && !p.Builtin {
-		bb := qt.NewQPushButton3("Compilar")
+		bb := qt.NewQPushButton3(tr("Build"))
 		bb.OnClicked(func() {
-			if u.confirm("Compilar plugin?", "Executar:\n\n    "+m.Build+"\n\nna pasta do plugin?") {
+			if u.confirm(tr("Build plugin?"), tr("Run this in the plugin folder?")+"\n\n    "+m.Build) {
 				pp.build(&m)
 			}
 		})
 		btns.AddWidget(bb.QWidget)
 	}
 	if !p.Builtin {
-		folder := qt.NewQPushButton3("Pasta")
+		folder := qt.NewQPushButton3(tr("Folder"))
 		folder.OnClicked(func() { u.openFolder(p.Dir) })
 		btns.AddWidget(folder.QWidget)
-		rm := qt.NewQPushButton3("Remover")
+		rm := qt.NewQPushButton3(tr("Remove"))
 		role(rm.QWidget, "danger")
 		rm.OnClicked(func() {
-			if !u.confirm("Remover plugin", "Remover “"+m.Name+"”?") {
+			if !u.confirm(tr("Remove plugin"), tr("Remove “{name}”?", "name", m.Name)) {
 				return
 			}
-			if err := u.app.plugins.Uninstall(m.ID); err != nil {
+			if err := u.core.Plugins.Uninstall(m.ID); err != nil {
 				u.toast(err.Error())
-			}
-			if u.app.cfg.Plugins.Layout == m.ID {
-				u.app.cfg.Plugins.Layout = ""
-				u.applyLayout()
 			}
 			singleShot(0, pp.refresh)
 		})
@@ -318,20 +312,20 @@ func (pp *pluginsPage) catalogCard(e catalog.Entry, update bool) *qt.QWidget {
 	top.SetSpacing(8)
 	top.AddWidget(label(e.Name, "", "card-title").QWidget)
 	for _, t := range e.Types {
-		top.AddWidget(chip(typeNames[t]).QWidget)
+		top.AddWidget(typeChip(t).QWidget)
 	}
 	if e.Runtime != "" {
-		top.AddWidget(chip(runtimeNames[e.Runtime]).QWidget)
+		top.AddWidget(chip(runtimeName(e.Runtime)).QWidget)
 	}
 	top.AddStretch()
-	btnText := "Instalar"
+	btnText := tr("Install")
 	if update {
-		btnText = "Atualizar"
+		btnText = tr("Update")
 	}
 	inst := qt.NewQPushButton3(btnText)
 	role(inst.QWidget, "primary")
 	inst.OnClicked(func() {
-		src, cleanup, err := u.app.catalog.Materialize(e)
+		src, cleanup, err := u.core.Catalog.Materialize(e)
 		if err != nil {
 			u.toast(err.Error())
 			return
@@ -356,18 +350,18 @@ func (pp *pluginsPage) installThen(src, name string, cleanup func()) {
 func (u *UI) pluginSettings(p *plugin.Plugin, after func()) {
 	m := p.Manifest
 	dlg := qt.NewQDialog(u.win.QWidget)
-	dlg.SetWindowTitle("Configurar " + m.Name)
+	dlg.SetWindowTitle(tr("Configure {name}", "name", m.Name))
 	dlg.SetMinimumWidth(520)
 	b := vbox(dlg.QWidget, []int{22, 20, 22, 18}, 8)
 	b.AddWidget(label(m.Name, "", "card-title").QWidget)
-	cur := u.app.plugins.Settings(m.ID)
+	cur := u.core.Plugins.Settings(m.ID)
 	getters := map[string]func() string{}
 	for _, s := range m.Settings {
 		s := s
 		b.AddWidget(label(firstNonEmpty(s.Label, s.Key), "", "card-sub").QWidget)
 		switch s.Type {
 		case "bool":
-			cb := qt.NewQCheckBox3(firstNonEmpty(s.Description, "Ativado"))
+			cb := qt.NewQCheckBox3(firstNonEmpty(s.Description, tr("Enabled")))
 			cb.SetChecked(cur[s.Key] == "true")
 			b.AddWidget(cb.QWidget)
 			getters[s.Key] = func() string { return boolStr(cb.IsChecked()) }
@@ -400,9 +394,9 @@ func (u *UI) pluginSettings(p *plugin.Plugin, after func()) {
 	}
 	row := qt.NewQHBoxLayout2()
 	row.AddStretch()
-	cancel := qt.NewQPushButton3("Cancelar")
+	cancel := qt.NewQPushButton3(tr("Cancel"))
 	cancel.OnClicked(dlg.Reject)
-	save := qt.NewQPushButton3("Salvar")
+	save := qt.NewQPushButton3(tr("Save"))
 	role(save.QWidget, "primary")
 	save.OnClicked(dlg.Accept)
 	row.AddWidget(cancel.QWidget)
@@ -414,15 +408,16 @@ func (u *UI) pluginSettings(p *plugin.Plugin, after func()) {
 		for k, g := range getters {
 			vals[k] = strings.TrimSpace(g())
 		}
-		if err := u.app.plugins.SetSettings(m.ID, vals); err != nil {
+		if err := u.core.Plugins.SetSettings(m.ID, vals); err != nil {
 			u.toast(m.Name + ": " + err.Error())
 		} else {
-			u.toast("Configurações salvas")
+			u.toast(tr("Settings saved"))
 		}
 		if after != nil {
 			after()
 		}
-		if m.Has(plugin.TypeSource) {
+		if m.Has(plugin.TypeSrc) {
+			u.home.popFor = ""
 			u.home.refresh()
 		}
 	}
@@ -442,7 +437,7 @@ type themesPage struct {
 
 func (u *UI) buildThemesPage() *themesPage {
 	tp := &themesPage{u: u}
-	sa, b := scrollPage("Temas", "Tudo na interface vem do CSS do tema: cores, fontes, animações, letras e layout dos widgets.")
+	sa, b := scrollPage(tr("Themes"), tr("Everything you see comes from the theme’s CSS: colors, fonts, animations and lyrics. Fine-tune it in Settings → Appearance."))
 	tp.w = sa
 
 	actions := qt.NewQHBoxLayout2()
@@ -451,26 +446,26 @@ func (u *UI) buildThemesPage() *themesPage {
 		text string
 		fn   func()
 	}{
-		{"Instalar .zip…", func() {
-			f := qt.QFileDialog_GetOpenFileName4(u.win.QWidget, "Instalar tema", homeDir(), "Tema (*.zip)")
+		{tr("Install .zip…"), func() {
+			f := qt.QFileDialog_GetOpenFileName4(u.win.QWidget, tr("Install theme"), homeDir(), tr("Theme (*.zip)"))
 			if f != "" {
 				tp.install(f, true)
 			}
 		}},
-		{"Instalar pasta…", func() {
-			d := qt.QFileDialog_GetExistingDirectory2(u.win.QWidget, "Pasta com theme.json")
+		{tr("Install folder…"), func() {
+			d := qt.QFileDialog_GetExistingDirectory2(u.win.QWidget, tr("Folder with theme.json"))
 			if d != "" {
 				tp.install(d, true)
 			}
 		}},
-		{"Instalar de URL…", func() {
-			url := qt.QInputDialog_GetText(u.win.QWidget, "Instalar de URL", "URL de um .zip com theme.json:")
+		{tr("Install from URL…"), func() {
+			url := qt.QInputDialog_GetText(u.win.QWidget, tr("Install from URL"), tr("URL of a .zip with theme.json:"))
 			if strings.TrimSpace(url) != "" {
 				tp.install(strings.TrimSpace(url), true)
 			}
 		}},
-		{"Criar meu tema", tp.createTheme},
-		{"Abrir pasta", func() { u.openFolder(u.app.paths.Themes) }},
+		{tr("Create my theme"), tp.createTheme},
+		{tr("Open folder"), func() { u.openFolder(u.core.Paths.Themes) }},
 	} {
 		btn := qt.NewQPushButton3(a.text)
 		btn.OnClicked(a.fn)
@@ -479,43 +474,43 @@ func (u *UI) buildThemesPage() *themesPage {
 	actions.AddStretch()
 	b.AddLayout(actions.QLayout)
 
-	b.AddWidget(label("Instalados", "", "heading").QWidget)
+	b.AddWidget(label(tr("Installed"), "", "heading").QWidget)
 	gw := qt.NewQWidget2()
 	tp.grid = qt.NewQGridLayout(gw)
 	tp.grid.SetSpacing(14)
 	tp.grid.SetContentsMargins(0, 0, 0, 0)
 	b.AddWidget(gw)
 
-	b.AddWidget(label("Para baixar", "", "heading").QWidget)
+	b.AddWidget(label(tr("Available"), "", "heading").QWidget)
 	cw := qt.NewQWidget2()
 	tp.catalog = qt.NewQGridLayout(cw)
 	tp.catalog.SetSpacing(14)
 	tp.catalog.SetContentsMargins(0, 0, 0, 0)
 	b.AddWidget(cw)
 
-	b.AddWidget(label("CSS do usuário", "", "heading").QWidget)
-	h := label("Aplicado por cima de qualquer tema. Ex.: :root { --accent: #ff7aa2; }  ou  #LyricsView { -meo-align: center; }", "", "hint")
+	b.AddWidget(label(tr("User CSS"), "", "heading").QWidget)
+	h := label(tr("Applied over any theme. E.g. :root { --red: #ff7aa2; }  or  #FullLyrics { -meo-align: center; }"), "", "hint")
 	h.SetWordWrap(true)
 	b.AddWidget(h.QWidget)
 	tp.css = qt.NewQPlainTextEdit2()
 	tp.css.SetObjectName("UserCSS")
 	tp.css.SetMinimumHeight(160)
-	tp.css.SetPlaceholderText("/* seu CSS aqui */")
-	tp.css.SetPlainText(u.app.cfg.UserCSS)
+	tp.css.SetPlaceholderText("/* " + tr("your CSS here") + " */")
+	tp.css.SetPlainText(u.cfg.UserCSS)
 	b.AddWidget(tp.css.QWidget)
 	row := qt.NewQHBoxLayout2()
-	apply := qt.NewQPushButton3("Aplicar CSS")
+	apply := qt.NewQPushButton3(tr("Apply CSS"))
 	role(apply.QWidget, "primary")
 	apply.OnClicked(func() {
-		u.app.cfg.UserCSS = tp.css.ToPlainText()
-		_ = u.app.cfg.Save()
+		u.cfg.UserCSS = tp.css.ToPlainText()
+		_ = u.cfg.Save()
 		u.applyTheme(true)
-		u.toast("CSS aplicado")
+		u.toast(tr("CSS applied"))
 	})
 	row.AddWidget(apply.QWidget)
-	tp.live = qt.NewQCheckBox3("Recarregar o tema automaticamente quando os arquivos mudarem")
-	tp.live.SetChecked(u.app.cfg.LiveReload)
-	tp.live.OnToggled(func(on bool) { u.app.cfg.LiveReload = on; _ = u.app.cfg.Save() })
+	tp.live = qt.NewQCheckBox3(tr("Reload the theme when its files change"))
+	tp.live.SetChecked(u.cfg.LiveReload)
+	tp.live.OnToggled(func(on bool) { u.cfg.LiveReload = on; _ = u.cfg.Save() })
 	row.AddSpacing(12)
 	row.AddWidget(tp.live.QWidget)
 	row.AddStretch()
@@ -529,11 +524,11 @@ func (tp *themesPage) install(src string, apply bool) {
 	var t *theme.Theme
 	u.runAsync(func() error {
 		var err error
-		t, err = u.app.themes.Install(src)
+		t, err = u.core.Themes.Install(src)
 		return err
 	}, func(err error) {
 		if err != nil {
-			qt.QMessageBox_Warning(u.win.QWidget, "Não foi possível instalar o tema", err.Error())
+			qt.QMessageBox_Warning(u.win.QWidget, tr("Could not install the theme"), err.Error())
 			return
 		}
 		if apply {
@@ -547,7 +542,7 @@ func (tp *themesPage) install(src string, apply bool) {
 // createTheme makes a new theme that extends the current one, ready to edit.
 func (tp *themesPage) createTheme() {
 	u := tp.u
-	name := strings.TrimSpace(qt.QInputDialog_GetText(u.win.QWidget, "Criar tema", "Nome do novo tema:"))
+	name := strings.TrimSpace(qt.QInputDialog_GetText(u.win.QWidget, tr("Create theme"), tr("Name of the new theme:")))
 	if name == "" {
 		return
 	}
@@ -561,12 +556,12 @@ func (tp *themesPage) createTheme() {
 		return '-'
 	}, name), "-")
 	if id == "" {
-		id = "meu-tema"
+		id = "my-theme"
 	}
 	base := u.currentTheme()
-	dir := filepath.Join(u.app.paths.Themes, id)
+	dir := filepath.Join(u.core.Paths.Themes, id)
 	if _, err := os.Stat(dir); err == nil {
-		u.toast("Já existe um tema com esse id: " + id)
+		u.toast(tr("A theme with this id already exists: {id}", "id", id))
 		return
 	}
 	_ = os.MkdirAll(dir, 0o755)
@@ -575,15 +570,15 @@ func (tp *themesPage) createTheme() {
   "name": %q,
   "version": "1.0.0",
   "author": "",
-  "description": "Meu tema, baseado em %s.",
+  "description": "My theme, based on %s.",
   "extends": %q,
   "style": "style.css"
 }
 `, id, name, base.Name, base.ID)
-	css := `/* ` + name + ` — estende o tema "` + base.Name + `".
-   Mude as variáveis abaixo ou sobrescreva qualquer regra.
-   Ative "Recarregar automaticamente" na página Temas para ver as mudanças ao salvar.
-   Referência completa: docs/THEMES.md */
+	css := `/* ` + name + ` — extends the theme "` + base.Name + `".
+   Change the variables below or override any rule.
+   With "Reload the theme when its files change" on, every save shows up at once.
+   Full reference: docs/themes/ */
 
 :root {
   /* --red: #d9737a; */
@@ -591,11 +586,11 @@ func (tp *themesPage) createTheme() {
   /* --wine-1: #241015; */
 }
 
-/* #LyricsView { -meo-align: center; -meo-font-size: 40px; } */
+/* #FullLyrics { -meo-align: center; -meo-font-size: 40px; } */
 `
 	_ = os.WriteFile(filepath.Join(dir, "theme.json"), []byte(manifest), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "style.css"), []byte(css), 0o644)
-	u.app.cfg.LiveReload = true
+	u.cfg.LiveReload = true
 	tp.live.SetChecked(true)
 	u.setTheme(id)
 	u.openFolder(dir)
@@ -642,12 +637,11 @@ func previewColors(m map[string]string) []theme.Color {
 
 func (tp *themesPage) refresh() {
 	u := tp.u
-	a := u.app
 	clearLayout(tp.grid.QLayout)
 	cur := u.currentTheme()
 	installed := map[string]string{}
 	cols := 3
-	for i, t := range a.themes.List() {
+	for i, t := range u.core.Themes.List() {
 		installed[t.ID] = t.Version
 		t := t
 		active := cur != nil && cur.ID == t.ID
@@ -656,7 +650,7 @@ func (tp *themesPage) refresh() {
 		top := qt.NewQHBoxLayout2()
 		top.AddWidget2(label(t.Name, "", "card-title").QWidget, 1)
 		if t.Extends != "" {
-			top.AddWidget(chip("ESTENDE " + strings.ToUpper(t.Extends)).QWidget)
+			top.AddWidget(chip(tr("EXTENDS {theme}", "theme", strings.ToUpper(t.Extends))).QWidget)
 		}
 		b.AddLayout(top.QLayout)
 		d := label(firstNonEmpty(t.Description, "—"), "", "card-sub")
@@ -665,27 +659,27 @@ func (tp *themesPage) refresh() {
 		row := qt.NewQHBoxLayout2()
 		row.SetSpacing(6)
 		if active {
-			in := qt.NewQPushButton3("Em uso")
+			in := qt.NewQPushButton3(tr("In use"))
 			in.SetEnabled(false)
 			row.AddWidget(in.QWidget)
 		} else {
-			ap := qt.NewQPushButton3("Aplicar")
+			ap := qt.NewQPushButton3(tr("Apply"))
 			role(ap.QWidget, "primary")
 			ap.OnClicked(func() { u.setTheme(t.ID) })
 			row.AddWidget(ap.QWidget)
 		}
-		folder := qt.NewQPushButton3("Pasta")
+		folder := qt.NewQPushButton3(tr("Folder"))
 		folder.OnClicked(func() { u.openFolder(t.Dir) })
 		row.AddWidget(folder.QWidget)
 		if t.ID != "fishalike" {
-			rm := qt.NewQPushButton3("Remover")
+			rm := qt.NewQPushButton3(tr("Remove"))
 			role(rm.QWidget, "danger")
 			rm.OnClicked(func() {
-				if !u.confirm("Remover tema", "Remover “"+t.Name+"”?") {
+				if !u.confirm(tr("Remove theme"), tr("Remove “{name}”?", "name", t.Name)) {
 					return
 				}
-				_ = a.themes.Remove(t.ID)
-				if a.cfg.Theme == t.ID {
+				_ = u.core.Themes.Remove(t.ID)
+				if u.cfg.Theme == t.ID {
 					u.setTheme("fishalike")
 				} else {
 					singleShot(0, tp.refresh)
@@ -699,7 +693,7 @@ func (tp *themesPage) refresh() {
 	}
 
 	clearLayout(tp.catalog.QLayout)
-	entries, errs := a.catalog.List("theme", a.cfg.Catalogs, a.host.UserAgent)
+	entries, errs := u.core.Catalog.List("theme", u.cfg.Catalogs, config.UserAgent)
 	n := 0
 	for _, e := range entries {
 		if v, ok := installed[e.ID]; ok && v == e.Version {
@@ -712,13 +706,13 @@ func (tp *themesPage) refresh() {
 		d := label(firstNonEmpty(e.Description, "—")+"  ·  "+firstNonEmpty(e.Author, "?"), "", "card-sub")
 		d.SetWordWrap(true)
 		b.AddWidget(d.QWidget)
-		get := qt.NewQPushButton3("Baixar e aplicar")
+		get := qt.NewQPushButton3(tr("Download and apply"))
 		role(get.QWidget, "primary")
 		get.OnClicked(func() {
-			u.toast("Baixando " + e.Name + "…")
-			u.runAsync(func() error { return a.installEntry(e) }, func(err error) {
+			u.toast(tr("Downloading {name}…", "name", e.Name))
+			u.runAsync(func() error { return u.core.InstallEntry(e) }, func(err error) {
 				if err != nil {
-					qt.QMessageBox_Warning(u.win.QWidget, "Erro", err.Error())
+					qt.QMessageBox_Warning(u.win.QWidget, tr("Error"), err.Error())
 					return
 				}
 				u.setTheme(e.ID)
@@ -729,10 +723,10 @@ func (tp *themesPage) refresh() {
 		n++
 	}
 	if n == 0 {
-		tp.catalog.AddWidget2(label("Todos os temas do catálogo já estão instalados.", "", "hint").QWidget, 0, 0)
+		tp.catalog.AddWidget2(label(tr("Every theme in the catalog is installed."), "", "hint").QWidget, 0, 0)
 	}
 	for i, err := range errs {
 		tp.catalog.AddWidget2(label(err.Error(), "", "card-error").QWidget, 100+i, 0)
 	}
-	tp.css.SetPlainText(a.cfg.UserCSS)
+	tp.css.SetPlainText(u.cfg.UserCSS)
 }

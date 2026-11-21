@@ -3,11 +3,9 @@
   "name": "LRCLIB",
   "version": "1.0.0",
   "author": "meofishes",
-  "description": "Letras sincronizadas por linha do lrclib.net, como reserva do Meo Lyrics. Exemplo de plugin de letras declarativo.",
+  "description": "Line-synced lyrics from lrclib.net, as a fallback for Meo Lyrics. Example declarative fnt (lyrics) plugin.",
   "homepage": "https://lrclib.net",
-  "types": [
-    "lyrics"
-  ],
+  "types": ["fnt"],
   "runtime": "declarative",
   "hosts": [
     "lrclib.net"

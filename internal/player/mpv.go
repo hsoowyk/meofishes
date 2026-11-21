@@ -26,6 +26,31 @@ type State struct {
 	Buffering  bool
 }
 
+// Backend is a player: mpv by default, or an xtm "player" plugin.
+type Backend interface {
+	Name() string
+	Load(url string, headers map[string]string) error
+	SetPaused(p bool) error
+	TogglePause() error
+	Stop() error
+	SetVolume(v float64) error // 0..100
+	SeekTo(ms int64) error
+	State() State
+	Close()
+}
+
+// Options configure mpv.
+type Options struct {
+	CacheMB       int    // demuxer cache (default 64)
+	ReadaheadSecs int    // how far mpv reads ahead (default 30)
+	ReplayGain    string // no | track | album (default track)
+	Normalize     bool   // dynamic loudness normalization
+	Device        string // audio device ("" = auto)
+	Exclusive     bool   // exclusive audio output where supported
+	Volume        float64
+	Extra         []string // extra mpv arguments
+}
+
 // Events from the player (called from a background goroutine).
 type Events struct {
 	OnState func(State)         // position/duration/pause changes
@@ -46,13 +71,19 @@ type MPV struct {
 	closed atomic.Bool
 	// position interpolation
 	posAt time.Time
+	// get_property results by request id
+	dataMu sync.Mutex
+	data   map[int64]json.RawMessage
 }
 
 // Available reports whether mpv is installed.
 func Available() bool { _, err := exec.LookPath("mpv"); return err == nil }
 
+// Name is "mpv".
+func (m *MPV) Name() string { return "mpv" }
+
 // Start launches mpv in idle mode.
-func Start(runtimeDir string, ev Events) (*MPV, error) {
+func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	bin, err := exec.LookPath("mpv")
 	if err != nil {
 		return nil, errors.New("mpv not found: install it (e.g. xbps-install mpv)")
@@ -62,12 +93,38 @@ func Start(runtimeDir string, ev Events) (*MPV, error) {
 	}
 	sock := filepath.Join(runtimeDir, fmt.Sprintf("meofishes-mpv-%d.sock", os.Getpid()))
 	_ = os.Remove(sock)
-	cmd := exec.Command(bin,
+	if opt.CacheMB <= 0 {
+		opt.CacheMB = 64
+	}
+	if opt.ReadaheadSecs <= 0 {
+		opt.ReadaheadSecs = 30
+	}
+	if opt.ReplayGain == "" {
+		opt.ReplayGain = "track"
+	}
+	if opt.Volume <= 0 {
+		opt.Volume = 80
+	}
+	args := []string{
 		"--idle=yes", "--no-video", "--no-terminal", "--force-window=no",
-		"--input-ipc-server="+sock, "--audio-display=no", "--keep-open=no",
-		"--ytdl-format=bestaudio/best", "--cache=yes", "--demuxer-max-bytes=50MiB",
-		"--volume=80", "--replaygain=track",
-	)
+		"--input-ipc-server=" + sock, "--audio-display=no", "--keep-open=no",
+		"--ytdl-format=bestaudio/best", "--cache=yes",
+		fmt.Sprintf("--demuxer-max-bytes=%dMiB", opt.CacheMB),
+		fmt.Sprintf("--demuxer-readahead-secs=%d", opt.ReadaheadSecs),
+		"--cache-pause-initial=no", "--cache-pause-wait=1",
+		fmt.Sprintf("--volume=%g", opt.Volume), "--replaygain=" + opt.ReplayGain,
+	}
+	if opt.Normalize {
+		args = append(args, "--af=lavfi=[dynaudnorm=f=250:g=15]")
+	}
+	if opt.Device != "" {
+		args = append(args, "--audio-device="+opt.Device)
+	}
+	if opt.Exclusive {
+		args = append(args, "--audio-exclusive=yes")
+	}
+	args = append(args, opt.Extra...)
+	cmd := exec.Command(bin, args...)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -146,6 +203,11 @@ func (m *MPV) read() {
 			continue
 		}
 		if msg.RequestID != 0 && msg.Event == "" {
+			m.dataMu.Lock()
+			if m.data != nil && len(msg.Data) > 0 {
+				m.data[msg.RequestID] = msg.Data
+			}
+			m.dataMu.Unlock()
 			if ch, ok := m.wait.LoadAndDelete(msg.RequestID); ok {
 				ch.(chan string) <- msg.Error
 			}
@@ -213,6 +275,56 @@ func (m *MPV) Stop() error               { return m.command("stop") }
 func (m *MPV) SetVolume(v float64) error { return m.command("set_property", "volume", v) }
 func (m *MPV) SeekTo(ms int64) error {
 	return m.command("seek", float64(ms)/1000, "absolute+exact")
+}
+
+// Get reads any mpv property (developer mode).
+func (m *MPV) Get(name string) (any, error) {
+	id := m.reqID.Add(1)
+	ch := make(chan string, 1)
+	m.wait.Store(id, ch)
+	m.dataMu.Lock()
+	if m.data == nil {
+		m.data = map[int64]json.RawMessage{}
+	}
+	m.dataMu.Unlock()
+	if err := m.send(map[string]any{"command": []any{"get_property", name}, "request_id": id}); err != nil {
+		m.wait.Delete(id)
+		return nil, err
+	}
+	select {
+	case e := <-ch:
+		m.dataMu.Lock()
+		raw := m.data[id]
+		delete(m.data, id)
+		m.dataMu.Unlock()
+		if e != "success" {
+			return nil, fmt.Errorf("mpv: %s", e)
+		}
+		var v any
+		_ = json.Unmarshal(raw, &v)
+		return v, nil
+	case <-time.After(2 * time.Second):
+		m.wait.Delete(id)
+		return nil, errors.New("mpv: timeout")
+	}
+}
+
+// Devices lists the audio output devices ("name" → "description").
+func (m *MPV) Devices() map[string]string {
+	v, err := m.Get("audio-device-list")
+	out := map[string]string{}
+	if err != nil {
+		return out
+	}
+	list, _ := v.([]any)
+	for _, x := range list {
+		if d, ok := x.(map[string]any); ok {
+			n, _ := d["name"].(string)
+			desc, _ := d["description"].(string)
+			out[n] = desc
+		}
+	}
+	return out
 }
 
 // State returns the last state, with the position interpolated since the

@@ -1,11 +1,17 @@
 {
   "id": "abyss",
   "name": "Abyss",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "meofishes",
-  "description": "Azul de mar profundo com detalhes em ciano. Estende o Fishalike e só troca as cores e algumas animações.",
+  "description": "Deep sea blue with cyan. Extends Fishalike.",
   "extends": "fishalike",
   "style": "style.css",
   "dark": true,
-  "preview": { "background": "#07111c", "surface": "#11263a", "accent": "#3fb6d9", "highlight": "#9be7f5", "text": "#e6f6fb" }
+  "preview": {
+    "background": "#07111c",
+    "surface": "#11263a",
+    "accent": "#3fb6d9",
+    "highlight": "#9be7f5",
+    "text": "#e6f6fb"
+  }
 }

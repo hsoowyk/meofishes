@@ -83,7 +83,7 @@ func (f *lyrFonts) delete() {
 type lyrStyle struct {
 	color, past, active, upcoming, glow, bgVocal, dot, credit, hoverC, empty          theme.Color
 	glowR, lift, soft, activeScale, inactiveScale, focus, fade, pad, spacing, bgScale float64
-	align, oppAlign, fill, scrollEase                                                 string
+	align, oppAlign, fill, scrollEase, wordAnim, lineAnim                             string
 	scrollDur, scaleDur                                                               int
 	dots, lineFill                                                                    bool
 	family                                                                            string
@@ -143,10 +143,13 @@ func (v *LyricsView) SetLyrics(l *core.Lyrics, msg string) {
 func (v *LyricsView) SetRunning(on bool) {
 	v.running = on
 	if on {
+		// the ticker stops while hidden (no wasted frames); the fullscreen
+		// player restarts it when it opens
 		v.u.anim.Ticker(v, func(time.Time) bool {
-			if v.IsVisible() {
-				v.Update()
+			if !v.IsVisible() {
+				return false
 			}
+			v.Update()
 			return v.running
 		})
 	}
@@ -174,11 +177,13 @@ func (v *LyricsView) readStyle() {
 		align:         p.Str("align", "left"),
 		oppAlign:      p.Str("opposite-align", "right"),
 		fill:          p.Str("word-fill", "gradient"),
+		wordAnim:      p.Str("word-animation", "fill"), // fill | fade | bounce | glow | none
+		lineAnim:      p.Str("line-animation", "fade"), // line-synced lyrics: fade | none
 		scrollEase:    p.Str("scroll-easing", "out-cubic"),
 		scrollDur:     p.Ms("scroll-duration", 550),
 		scaleDur:      p.Ms("scale-duration", 400),
 		dots:          p.Bool("interlude-dots", true),
-		lineFill:      p.Bool("line-sync-fill", true),
+		lineFill:      p.Bool("line-sync-fill", false),
 		family:        p.Str("font-family", ""),
 		size:          p.Len("font-size", 28),
 		weight:        int(p.Num("font-weight", 700)),
@@ -443,14 +448,14 @@ func (v *LyricsView) paint() {
 		}
 		v.paintWords(p, l.words, l.rowW, l.align, 0, v.fonts.main, v.fonts.rowH, v.fonts.ascent, W,
 			line, isActive, base, l.timed)
-		if len(l.bg) > 0 {
+		if len(l.bg) > 0 && v.u.cfg.Prefs.BgVocals {
 			bgBase := withAlpha(s.bgVocal, 0.7)
 			v.paintWords(p, l.bg, l.bgRowW, l.align, float64(l.rows)*v.fonts.rowH, v.fonts.bg, v.fonts.bgRowH, v.fonts.bgAsc, W,
 				line, isActive, bgBase, true)
 		}
 		p.Restore()
 	}
-	if v.lyr.Credit != "" {
+	if v.lyr.Credit != "" && v.u.cfg.Prefs.LyricsCredits {
 		f := font(s.family, math.Max(11, s.size*0.36), 500)
 		p.SetFont(f)
 		setPenColor(p, s.credit)
@@ -488,12 +493,34 @@ func (v *LyricsView) paintWords(p *qt.QPainter, ws []layWord, rowW []float64, al
 			pt.Delete()
 			continue
 		}
-		// progress of this word (or of the whole line for line sync)
+		// line-synced lyrics: the whole line lights up at once (no per-word
+		// animation), optionally fading in; or a sweep if -meo-line-sync-fill.
+		if !timed && !s.lineFill {
+			c := s.active
+			if s.lineAnim == "fade" {
+				k := clamp(float64(pos-line.Start)/250, 0, 1)
+				c = theme.Mix(s.upcoming, s.active, k)
+			}
+			if s.glowR > 0 && s.glow.A > 0 {
+				setPenColor(p, withAlpha(s.glow, 0.18))
+				for k := 0; k < 8; k++ {
+					a := float64(k) * math.Pi / 4
+					pt := qt.NewQPointF3(x+math.Cos(a)*s.glowR, y+math.Sin(a)*s.glowR)
+					p.DrawText(pt, w.w.Text)
+					pt.Delete()
+				}
+			}
+			setPenColor(p, c)
+			pt := qt.NewQPointF3(x, y)
+			p.DrawText(pt, w.w.Text)
+			pt.Delete()
+			continue
+		}
+		// progress of this word (or of the whole line for a line sweep)
 		var frac float64
 		if timed {
 			frac = progress(pos, w.w.Start, w.w.End)
-		} else if s.lineFill {
-			// line-synced: sweep across the line
+		} else {
 			total := 0.0
 			for _, rw := range rowW {
 				total += rw
@@ -504,17 +531,32 @@ func (v *LyricsView) paintWords(p *qt.QPainter, ws []layWord, rowW []float64, al
 				before += rowW[r]
 			}
 			frac = clamp((lp*total-before-w.x)/math.Max(1, w.wd), 0, 1)
-		} else {
-			frac = 1
+		}
+		anim := s.wordAnim
+		if anim == "none" {
+			setPenColor(p, s.active)
+			pt := qt.NewQPointF3(x, y)
+			p.DrawText(pt, w.w.Text)
+			pt.Delete()
+			continue
 		}
 		lift := 0.0
-		if s.lift > 0 && frac > 0 {
-			lift = s.lift * theme.Ease("out-cubic", math.Min(1, frac*1.6))
+		if s.lift > 0 && frac > 0 && timed {
+			switch anim {
+			case "bounce": // rises while sung, then settles
+				lift = s.lift * 2.2 * math.Sin(math.Min(1, frac)*math.Pi)
+			default:
+				lift = s.lift * theme.Ease("out-cubic", math.Min(1, frac*1.6))
+			}
 		}
 		y -= lift
 		// glow behind sung words
-		if s.glowR > 0 && frac > 0 && s.glow.A > 0 {
-			gc := withAlpha(s.glow, 0.22*math.Min(1, frac*2))
+		if s.glowR > 0 && frac > 0 && s.glow.A > 0 && (anim != "fade") {
+			ga := 0.22 * math.Min(1, frac*2)
+			if anim == "glow" { // glow only while the word is sung
+				ga = 0.4 * math.Sin(math.Min(1, frac)*math.Pi)
+			}
+			gc := withAlpha(s.glow, ga)
 			setPenColor(p, gc)
 			for k := 0; k < 8; k++ {
 				a := float64(k) * math.Pi / 4
@@ -522,6 +564,13 @@ func (v *LyricsView) paintWords(p *qt.QPainter, ws []layWord, rowW []float64, al
 				p.DrawText(pt, w.w.Text)
 				pt.Delete()
 			}
+		}
+		if anim == "fade" || anim == "glow" || anim == "bounce" {
+			setPenColor(p, theme.Mix(s.upcoming, s.active, theme.Ease("out-quad", frac)))
+			pt := qt.NewQPointF3(x, y)
+			p.DrawText(pt, w.w.Text)
+			pt.Delete()
+			continue
 		}
 		pt := qt.NewQPointF3(x, y)
 		switch {

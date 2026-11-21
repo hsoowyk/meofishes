@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -261,8 +262,8 @@ func lyricsModule() map[string]any {
 		"decodeKRC":     lyrics.DecodeKRC,
 		"matchScore": func(q map[string]any, title, artist string, durationMs int64) float64 {
 			lq := lyrics.Query{Title: toString(q["title"]), Artist: toString(q["artist"])}
-			if d, ok := q["durationMs"].(int64); ok {
-				lq.DurationMs = d
+			if d, err := strconv.ParseFloat(toString(q["durationMs"]), 64); err == nil {
+				lq.DurationMs = int64(d)
 			}
 			return lyrics.MatchScore(lq, title, artist, durationMs)
 		},

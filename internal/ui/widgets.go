@@ -46,6 +46,7 @@ type CoverView struct {
 	zoom    float64
 	square  bool
 	OnClick func()
+	Icon    string // placeholder icon (default "note")
 }
 
 func (u *UI) coverView(name string, square bool) *CoverView {
@@ -121,7 +122,7 @@ func (c *CoverView) paint() {
 	w, h := float64(c.Width()), float64(c.Height())
 	side := math.Min(w, h)
 	x0, y0 := (w-side)/2, (h-side)/2
-	r := pr.Len("radius", 12)
+	r := math.Min(pr.Len("radius", 12), side/2) // "999px" makes a circle
 
 	draw := func(px *qt.QPixmap, alpha, zoom float64) {
 		s := side * zoom
@@ -136,7 +137,11 @@ func (c *CoverView) paint() {
 			p.FillPath(path, br)
 			br.Delete()
 			col.Delete()
-			drawIcon(p, "note", x+s/2, y+s/2, s*0.36, pr.Color("placeholder-icon", theme.Color{R: 255, G: 255, B: 255, A: .3}))
+			icon := c.Icon
+			if icon == "" {
+				icon = "note"
+			}
+			drawIcon(p, icon, x+s/2, y+s/2, s*0.36, pr.Color("placeholder-icon", theme.Color{R: 255, G: 255, B: 255, A: .3}))
 		} else {
 			p.SetClipPath(path)
 			// cover-fit the pixmap into the square
@@ -169,9 +174,10 @@ type Slider struct {
 	value    float64 // shown value (eased)
 	target   float64
 	dragging bool
-	hover    float64         // 0..1 hover animation
-	OnSeek   func(v float64) // released
-	OnDrag   func(v float64) // while dragging
+	hover    float64                // 0..1 hover animation
+	OnSeek   func(v float64)        // released
+	OnDrag   func(v float64)        // while dragging
+	Tip      func(v float64) string // tooltip text for the hovered position
 }
 
 func (u *UI) slider(name string) *Slider {
@@ -191,6 +197,11 @@ func (u *UI) slider(name string) *Slider {
 		s.Update()
 	})
 	s.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+		if s.Tip != nil {
+			if t := s.Tip(val(e)); t != "" {
+				qt.QToolTip_ShowText(e.GlobalPos(), t)
+			}
+		}
 		if s.dragging {
 			s.value, s.target = val(e), val(e)
 			if s.OnDrag != nil {
@@ -305,30 +316,46 @@ func (s *Slider) paint() {
 // ---------------------------------------------------------------- Backdrop
 
 // Backdrop is the window background: a gradient tinted by the cover color,
-// with a soft breathing light. Props on #Root: -meo-backdrop-*.
+// with a soft breathing light, and optionally the blurred cover (fullscreen
+// player). It is painted into a cached pixmap and only repainted when
+// something changes, so the window stays light. Props: -meo-backdrop-*.
 type Backdrop struct {
 	*qt.QWidget
-	u       *UI
-	tint    theme.Color // current dynamic color
-	hasTint bool
-	pulseT0 time.Time
-	pulseOn bool
+	u        *UI
+	tint     theme.Color // current dynamic color
+	hasTint  bool
+	pulseT0  time.Time
+	pulseOn  bool
+	img      *qt.QPixmap // blurred cover (nil = none)
+	imgPrev  *qt.QPixmap
+	imgFade  float64
+	cache    *qt.QPixmap
+	dirty    bool
+	onResize []func()
 }
 
-func (u *UI) backdrop() *Backdrop {
-	b := &Backdrop{QWidget: qt.NewQWidget2(), u: u, pulseT0: time.Now()}
-	b.SetObjectName("Root")
+func (u *UI) backdrop(name string) *Backdrop {
+	b := &Backdrop{QWidget: qt.NewQWidget2(), u: u, pulseT0: time.Now(), dirty: true, imgFade: 1}
+	b.SetObjectName(name)
 	b.SetAttribute(qt.WA_StyledBackground)
 	b.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) { b.paint() })
-	u.style.OnChange(func() { b.restartPulse(); b.Update() })
+	b.OnResizeEvent(func(super func(*qt.QResizeEvent), e *qt.QResizeEvent) {
+		b.dirty = true
+		for _, f := range b.onResize {
+			f()
+		}
+	})
+	u.style.OnChange(func() { b.restartPulse(); b.invalidate() })
 	return b
 }
+
+func (b *Backdrop) invalidate() { b.dirty = true; b.Update() }
 
 func (b *Backdrop) props() P { return b.u.style.For(b.QWidget, "Backdrop") }
 
 func (b *Backdrop) restartPulse() {
 	period := b.props().Ms("backdrop-glow-pulse", 0)
-	if period <= 0 {
+	if period <= 0 || b.u.cfg.Prefs.ReduceMotion {
 		b.u.anim.StopTicker(b)
 		b.pulseOn = false
 		return
@@ -336,9 +363,9 @@ func (b *Backdrop) restartPulse() {
 	b.pulseOn = true
 	last := time.Time{}
 	b.u.anim.Ticker(b, func(now time.Time) bool {
-		if now.Sub(last) > 66*time.Millisecond { // 15 fps is plenty for a slow glow
+		if now.Sub(last) > 100*time.Millisecond && b.IsVisible() { // 10 fps is plenty for a slow glow
 			last = now
-			b.Update()
+			b.invalidate()
 		}
 		return b.pulseOn
 	})
@@ -359,16 +386,65 @@ func (b *Backdrop) SetTint(c theme.Color, ok bool) {
 	}
 	b.hasTint = true
 	dur := time.Duration(p.Ms("backdrop-dynamic-duration", 1200)) * time.Millisecond
-	b.u.anim.Tween(b, dur, 0, "in-out-sine", func(t float64) { b.tint = theme.Mix(from, c, t); b.Update() }, nil)
+	b.u.anim.Tween(b, dur, 0, "in-out-sine", func(t float64) {
+		b.tint = theme.Mix(from, c, t)
+		b.invalidate()
+	}, nil)
+}
+
+// SetImage shows a blurred copy of px behind everything (nil removes it).
+// The blur is a cheap downscale/upscale. Props: -meo-backdrop-image-opacity,
+// -meo-backdrop-image-blur (the downscale size, smaller = blurrier).
+func (b *Backdrop) SetImage(px *qt.QPixmap) {
+	if b.imgPrev != nil {
+		b.imgPrev.Delete()
+	}
+	b.imgPrev = b.img
+	b.img = nil
+	if px != nil && !px.IsNull() {
+		n := int(b.props().Num("backdrop-image-blur", 18))
+		small := px.Scaled3(max(4, n), max(4, n), qt.KeepAspectRatioByExpanding, qt.SmoothTransformation)
+		b.img = qt.NewQPixmap5(small.Scaled3(256, 256, qt.KeepAspectRatioByExpanding, qt.SmoothTransformation))
+	}
+	b.u.anim.Tween([2]any{b, "img"}, 900*time.Millisecond, 0, "in-out-sine", func(t float64) {
+		b.imgFade = t
+		b.invalidate()
+	}, func() {
+		if b.imgPrev != nil {
+			b.imgPrev.Delete()
+			b.imgPrev = nil
+		}
+	})
 }
 
 func (b *Backdrop) paint() {
+	w, h := b.Width(), b.Height()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	if b.dirty || b.cache == nil || b.cache.Width() != w || b.cache.Height() != h {
+		if b.cache == nil || b.cache.Width() != w || b.cache.Height() != h {
+			if b.cache != nil {
+				b.cache.Delete()
+			}
+			b.cache = qt.NewQPixmap2(w, h)
+		}
+		cp := qt.NewQPainter2(b.cache.QPaintDevice)
+		cp.SetRenderHint(qt.QPainter__Antialiasing)
+		cp.SetRenderHint(qt.QPainter__SmoothPixmapTransform)
+		b.render(cp, float64(w), float64(h))
+		cp.End()
+		cp.Delete()
+		b.dirty = false
+	}
 	p := qt.NewQPainter2(b.QPaintDevice)
-	defer p.Delete()
-	defer p.End()
-	p.SetRenderHint(qt.QPainter__Antialiasing)
+	p.DrawPixmap9(0, 0, b.cache)
+	p.End()
+	p.Delete()
+}
+
+func (b *Backdrop) render(p *qt.QPainter, w, h float64) {
 	pr := b.props()
-	w, h := float64(b.Width()), float64(b.Height())
 	from := pr.Color("backdrop-from", theme.Color{R: 36, G: 16, B: 21, A: 1})
 	to := pr.Color("backdrop-to", theme.Color{R: 27, G: 11, B: 15, A: 1})
 	if b.hasTint && b.tint.A > 0 {
@@ -393,6 +469,31 @@ func (b *Backdrop) paint() {
 	c.Delete()
 	g.Delete()
 
+	// blurred cover
+	op := pr.Num("backdrop-image-opacity", 0.55)
+	drawImg := func(px *qt.QPixmap, alpha float64) {
+		if px == nil || alpha <= 0 {
+			return
+		}
+		pw, ph := float64(px.Width()), float64(px.Height())
+		k := math.Max(w/pw, h/ph)
+		tr := rectF((w-pw*k)/2, (h-ph*k)/2, pw*k, ph*k)
+		sr := rectF(0, 0, pw, ph)
+		p.SetOpacity(alpha)
+		p.DrawPixmap(tr, px, sr)
+		p.SetOpacity(1)
+		tr.Delete()
+		sr.Delete()
+	}
+	drawImg(b.imgPrev, op*(1-b.imgFade))
+	drawImg(b.img, op*b.imgFade)
+	if b.img != nil || b.imgPrev != nil {
+		shade := pr.Color("backdrop-image-shade", theme.Color{A: 0.35})
+		col := qc(shade)
+		p.FillRect4(r, col)
+		col.Delete()
+	}
+
 	if pr.Has("backdrop-glow") {
 		glow := pr.Color("backdrop-glow", theme.Color{})
 		if b.hasTint && b.tint.A > 0 {
@@ -400,7 +501,7 @@ func (b *Backdrop) paint() {
 			t.A = glow.A
 			glow = theme.Mix(glow, t, 0.5*b.tint.A)
 		}
-		if period := pr.Ms("backdrop-glow-pulse", 0); period > 0 {
+		if period := pr.Ms("backdrop-glow-pulse", 0); period > 0 && b.pulseOn {
 			ph := float64(time.Since(b.pulseT0).Milliseconds()%int64(period)) / float64(period)
 			glow.A *= 0.75 + 0.25*math.Sin(ph*2*math.Pi)
 		}

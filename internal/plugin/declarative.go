@@ -21,6 +21,21 @@ type declarative struct {
 	settings func() map[string]string
 }
 
+// Caps lists what the JSON blocks provide.
+func (d *declarative) Caps() map[string]bool {
+	c := map[string]bool{}
+	if src := d.m.Source; src != nil {
+		c[CapSearch] = src.Search != nil
+		c[CapHome] = src.Home != nil
+		c[CapRecommend] = src.Recommend != nil
+		c[CapStream] = src.Resolver != "match"
+		c[CapMatch] = src.Resolver != "match" && src.Search != nil
+	}
+	c[CapLyrics] = d.m.Lyrics != nil
+	c[CapArtwork] = d.m.Artwork != nil
+	return c
+}
+
 func (d *declarative) vars(extra map[string]any) map[string]any {
 	s := map[string]any{}
 	for k, v := range d.settings() {
@@ -152,6 +167,40 @@ func (d *declarative) Home(ctx context.Context) (*core.SearchResult, error) {
 	return d.listTracks(ctx, d.m.Source.Home, nil)
 }
 
+func (d *declarative) Recommend(ctx context.Context, seed core.Track) (*core.SearchResult, error) {
+	if d.m.Source == nil || d.m.Source.Recommend == nil {
+		return &core.SearchResult{}, nil
+	}
+	return d.listTracks(ctx, d.m.Source.Recommend, trackVars(seed))
+}
+
+func lyricsVars(q lyrics.Query) map[string]any {
+	return map[string]any{
+		"title": q.Title, "artist": q.Artist, "album": q.Album, "isrc": q.ISRC, "videoId": q.VideoID,
+		"durationMs": q.DurationMs, "durationSec": q.DurationMs / 1000,
+		"cleanTitle": lyrics.CleanTitle(q.Title), "primaryArtist": lyrics.PrimaryArtist(q.Artist),
+	}
+}
+
+func (d *declarative) Artwork(ctx context.Context, q lyrics.Query) (string, error) {
+	aw := d.m.Artwork
+	if aw == nil {
+		return "", lyrics.ErrNotFound
+	}
+	doc, err := d.call(ctx, aw.BaseURL, aw.Headers, aw.Request, d.vars(lyricsVars(q)))
+	if err != nil {
+		return "", err
+	}
+	u := toString(Lookup(doc, aw.Path))
+	if u == "" {
+		return "", lyrics.ErrNotFound
+	}
+	if len(aw.Replace) == 2 {
+		u = strings.Replace(u, aw.Replace[0], aw.Replace[1], 1)
+	}
+	return u, nil
+}
+
 func (d *declarative) Open(ctx context.Context, c core.Collection) (*core.Collection, error) {
 	return &c, nil
 }
@@ -169,7 +218,25 @@ func trackVars(t core.Track) map[string]any {
 
 func (d *declarative) Resolve(ctx context.Context, t core.Track) (*Stream, error) {
 	src := d.m.Source
+	if src == nil || src.Resolver == "match" {
+		return nil, fmt.Errorf("%s only has metadata", d.m.ID)
+	}
 	u := t.StreamURL
+	if t.Source != d.m.ID { // "match": play another plugin's track by searching it
+		if src.Search == nil {
+			return nil, fmt.Errorf("%s cannot search", d.m.ID)
+		}
+		r, err := d.Search(ctx, strings.TrimSpace(t.Artist+" "+t.Title))
+		if err != nil {
+			return nil, err
+		}
+		if r == nil || len(r.Tracks) == 0 {
+			return nil, lyrics.ErrNotFound
+		}
+		best := r.Tracks[0]
+		u = best.StreamURL
+		t = best
+	}
 	if src.Resolve != nil {
 		doc, err := d.call(ctx, src.BaseURL, src.Headers, src.Resolve.Request, d.vars(trackVars(t)))
 		if err != nil {
@@ -188,11 +255,10 @@ func (d *declarative) Resolve(ctx context.Context, t core.Track) (*Stream, error
 
 func (d *declarative) Lyrics(ctx context.Context, q lyrics.Query) (*core.Lyrics, error) {
 	ly := d.m.Lyrics
-	vars := d.vars(map[string]any{
-		"title": q.Title, "artist": q.Artist, "album": q.Album, "isrc": q.ISRC, "videoId": q.VideoID,
-		"durationMs": q.DurationMs, "durationSec": q.DurationMs / 1000,
-		"cleanTitle": lyrics.CleanTitle(q.Title), "primaryArtist": lyrics.PrimaryArtist(q.Artist),
-	})
+	if ly == nil {
+		return nil, lyrics.ErrNotFound
+	}
+	vars := d.vars(lyricsVars(q))
 	doc, err := d.call(ctx, ly.BaseURL, ly.Headers, ly.Request, vars)
 	if err != nil {
 		return nil, err

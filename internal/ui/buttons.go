@@ -150,43 +150,50 @@ func boolStr(b bool) string {
 	return "false"
 }
 
-// NavButton is a sidebar button: icon + text, fully painted so the icon and
-// the background animate together.
+// NavButton is a sidebar button: just an icon (the name is the tooltip),
+// with an animated background and an active indicator bar.
+// Props: -meo-size, -meo-icon-size, -meo-indicator-color, -meo-indicator-width.
 type NavButton struct {
 	*qt.QPushButton
 	d    *deco
 	Icon string
+	ind  float64 // indicator animation 0..1
 }
 
-func (u *UI) navButton(name, icon, text string) *NavButton {
+func (u *UI) navButton(name, icon, tip string) *NavButton {
 	b := &NavButton{QPushButton: qt.NewQPushButton2(), Icon: icon}
 	b.SetObjectName(name)
-	b.SetText(text)
+	b.SetToolTip(tip)
+	b.SetAccessibleName(tip)
 	role(b.QWidget, "nav")
 	setProp(b.QWidget, "active", "false")
 	b.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
-	b.SetMinimumHeight(40)
 	b.d = u.newDeco(b.QWidget, "QPushButton")
+	size := int(b.d.props().Len("size", 46))
+	b.SetFixedSize2(size, size)
+	u.style.Watch([2]any{b, "size"}, func() {
+		s := int(b.d.props().Len("size", 46))
+		b.SetFixedSize2(s, s)
+	})
 	b.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) { super(e); b.d.setHover(true) })
 	b.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { super(e); b.d.setHover(false) })
+	b.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) { super(e); b.d.setPressed(true) })
+	b.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) { super(e); b.d.setPressed(false) })
 	b.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
 		if !b.d.enabled {
 			super(e)
 		}
 		p := qt.NewQPainter2(b.QPaintDevice)
 		p.SetRenderHint(qt.QPainter__Antialiasing)
-		p.SetRenderHint(qt.QPainter__TextAntialiasing)
 		w, h := float64(b.Width()), float64(b.Height())
-		b.d.paintBg(p, 10)
-		pad := b.d.props().Len("padding-x", 14)
-		size := b.d.props().Len("icon-size", 17)
-		drawIcon(p, b.Icon, pad+size/2, h/2, size, b.d.icon)
-		if b.d.enabled {
-			p.SetFont(b.Font())
-			setPenColor(p, paletteText(b.QWidget, qt.QPalette__ButtonText))
-			r := rectF(pad+size+12, 0, w-pad-size-12, h)
-			p.DrawText5(r, int(qt.AlignLeft|qt.AlignVCenter), b.Text())
-			r.Delete()
+		b.d.paintBg(p, 12)
+		pr := b.d.props()
+		size := pr.Len("icon-size", 20) * b.d.scale
+		drawIcon(p, b.Icon, w/2, h/2, size, b.d.icon)
+		if b.ind > 0.01 {
+			iw := pr.Len("indicator-width", 3)
+			ih := h * 0.5 * b.ind
+			fillRounded(p, 0, (h-ih)/2, iw, ih, iw/2, pr.Color("indicator-color", b.d.icon))
 		}
 		p.End()
 		p.Delete()
@@ -195,8 +202,19 @@ func (u *UI) navButton(name, icon, text string) *NavButton {
 }
 
 func (b *NavButton) SetActive(on bool) {
+	if (b.d.active) == on {
+		return
+	}
 	setProp(b.QWidget, "active", boolStr(on))
 	b.d.setActive(on)
+	from, to := b.ind, 0.0
+	if on {
+		to = 1
+	}
+	b.d.u.anim.Tween([2]any{b, "ind"}, 260*time.Millisecond, 0, "out-back", func(t float64) {
+		b.ind = lerp(from, to, t)
+		b.Update()
+	}, nil)
 }
 
 // ---------------------------------------------------------------- vector icons
@@ -204,6 +222,9 @@ func (b *NavButton) SetActive(on bool) {
 // drawIcon draws a named icon centered at (cx, cy) inside a size×size box.
 func drawIcon(p *qt.QPainter, name string, cx, cy, size float64, c theme.Color) {
 	if name == "" {
+		return
+	}
+	if activeIcons != nil && activeIcons.draw(p, name, cx, cy, size, c) {
 		return
 	}
 	s := size / 24 // icons are designed on a 24 px grid
@@ -343,6 +364,101 @@ func drawIcon(p *qt.QPainter, name string, cx, cy, size float64, c theme.Color) 
 		fill(12, 20, 4, 12, 3.5, 8, 6, 5, 9.5, 5, 12, 7.5, 14.5, 5, 18, 5, 20.5, 8, 20, 12)
 	case "folder":
 		stroke(true, 3.5, 6, 9.5, 6, 11.5, 8, 20.5, 8, 20.5, 18.5, 3.5, 18.5)
+	case "fish":
+		// a small fish: body, tail and eye
+		path := qt.NewQPainterPath()
+		path.MoveTo2(X(3.5), Y(12))
+		path.CubicTo2(X(7), Y(5.5), X(14.5), Y(5.5), X(17.5), Y(12))
+		path.CubicTo2(X(14.5), Y(18.5), X(7), Y(18.5), X(3.5), Y(12))
+		path.CloseSubpath()
+		p.FillPath(path, brush)
+		path.Delete()
+		fill(16.5, 12, 21, 7.5, 20, 12, 21, 16.5)
+		eye := qt.NewQColor11(0, 0, 0, 120)
+		eb := qt.NewQBrush3(eye)
+		ep := qt.NewQPainterPath()
+		ep.AddEllipse2(X(7.3), Y(10.3), 1.8*s, 1.8*s)
+		p.FillPath(ep, eb)
+		ep.Delete()
+		eb.Delete()
+		eye.Delete()
+	case "library":
+		rect(4, 4, 3, 16, 1)
+		rect(9, 4, 3, 16, 1)
+		stroke(true, 14.5, 5, 17.5, 4.2, 21, 18.8, 18, 19.6)
+	case "heart-outline":
+		stroke(true, 12, 19.5, 4.5, 12.2, 3.8, 8.3, 6.2, 5.4, 9.6, 5.3, 12, 7.8, 14.4, 5.3, 17.8, 5.4, 20.2, 8.3, 19.5, 12.2)
+	case "code":
+		stroke(false, 8.5, 7, 3.5, 12, 8.5, 17)
+		stroke(false, 15.5, 7, 20.5, 12, 15.5, 17)
+		stroke(false, 13.5, 5, 10.5, 19)
+	case "chevron-down":
+		stroke(false, 6, 9.5, 12, 15.5, 18, 9.5)
+	case "chevron-up":
+		stroke(false, 6, 14.5, 12, 8.5, 18, 14.5)
+	case "back", "chevron-left":
+		stroke(false, 14.5, 6, 8.5, 12, 14.5, 18)
+	case "chevron-right":
+		stroke(false, 9.5, 6, 15.5, 12, 9.5, 18)
+	case "more":
+		circle(6, 12, 1.6, true)
+		circle(12, 12, 1.6, true)
+		circle(18, 12, 1.6, true)
+	case "drag":
+		for _, y := range []float64{8, 12, 16} {
+			circle(9.5, y, 1.3, true)
+			circle(14.5, y, 1.3, true)
+		}
+	case "playlist":
+		stroke(false, 4, 6, 15, 6)
+		stroke(false, 4, 11, 15, 11)
+		stroke(false, 4, 16, 10, 16)
+		stroke(false, 17, 9, 17, 18)
+		circle(15.3, 18, 1.9, true)
+	case "export":
+		stroke(false, 12, 15, 12, 4)
+		stroke(false, 8, 8, 12, 4, 16, 8)
+		stroke(false, 5, 13, 5, 20, 19, 20, 19, 13)
+	case "import":
+		stroke(false, 12, 4, 12, 15)
+		stroke(false, 8, 11, 12, 15, 16, 11)
+		stroke(false, 5, 13, 5, 20, 19, 20, 19, 13)
+	case "radio":
+		circle(12, 12, 2, true)
+		stroke(false, 8, 8, 6.5, 10, 6.5, 14, 8, 16)
+		stroke(false, 16, 8, 17.5, 10, 17.5, 14, 16, 16)
+		stroke(false, 5, 5.5, 3, 9, 3, 15, 5, 18.5)
+		stroke(false, 19, 5.5, 21, 9, 21, 15, 19, 18.5)
+	case "trash":
+		stroke(false, 4, 7, 20, 7)
+		stroke(false, 9.5, 7, 9.5, 4.5, 14.5, 4.5, 14.5, 7)
+		stroke(true, 6, 7, 7, 20, 17, 20, 18, 7)
+	case "edit":
+		stroke(true, 5, 19, 5.5, 15, 15.5, 5, 19, 8.5, 9, 18.5)
+		stroke(false, 13.5, 7, 17, 10.5)
+	case "check":
+		stroke(false, 5, 12.5, 10, 17.5, 19, 7)
+	case "info":
+		circle(12, 12, 8.5, false)
+		rect(11, 10.5, 2, 6.5, .8)
+		circle(12, 7.6, 1.2, true)
+	case "fullscreen":
+		stroke(false, 4, 9, 4, 4, 9, 4)
+		stroke(false, 15, 4, 20, 4, 20, 9)
+		stroke(false, 20, 15, 20, 20, 15, 20)
+		stroke(false, 9, 20, 4, 20, 4, 15)
+	case "play-next":
+		fill(4, 5, 12, 10, 4, 15)
+		stroke(false, 14, 8, 21, 8)
+		stroke(false, 14, 12.5, 21, 12.5)
+		stroke(false, 4, 18.5, 21, 18.5)
+	case "minimize":
+		stroke(false, 6, 12, 18, 12)
+	case "maximize":
+		stroke(true, 6, 6, 18, 6, 18, 18, 6, 18)
+	case "restore":
+		stroke(true, 6, 9, 15, 9, 15, 18, 6, 18)
+		stroke(false, 9, 9, 9, 6, 18, 6, 18, 15, 15, 15)
 	case "refresh":
 		stroke(false, 19, 8, 17, 5.5, 13.5, 4.2, 10, 4.5, 6.5, 6.5, 4.5, 10, 4.5, 14, 6.5, 17.5, 10, 19.5, 14, 19.5, 17.5, 17.5, 19.3, 14.5)
 		fill(20, 3.5, 20, 9, 14.5, 8.5)

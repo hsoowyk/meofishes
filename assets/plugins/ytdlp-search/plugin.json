@@ -1,35 +1,19 @@
 {
   "id": "ytdlp-search",
   "name": "YouTube / SoundCloud (yt-dlp)",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "meofishes",
-  "description": "Busca no YouTube, YouTube Music ou SoundCloud usando a biblioteca Go 'ytdlp' do meofishes (precisa do yt-dlp instalado).",
-  "types": [
-    "source"
-  ],
+  "description": "Search YouTube, YouTube Music or SoundCloud with the 'ytdlp' Go module (needs yt-dlp). Also plays tracks from metadata-only plugins (Deezer…) by finding them on YouTube, and recommends tracks through YouTube mixes.",
+  "types": ["fnt", "src"],
   "runtime": "script",
   "entry": "main.js",
-  "modules": [
-    "ytdlp"
-  ],
+  "match": true,
+  "modules": ["ytdlp", "lyrics"],
   "settings": [
-    {
-      "key": "site",
-      "label": "Site",
-      "type": "choice",
-      "choices": [
-        "youtube",
-        "soundcloud",
-        "ytmusic"
-      ],
-      "default": "youtube",
-      "description": "No YouTube Music o yt-dlp não informa artista nem duração na busca rápida; prefira YouTube."
-    },
-    {
-      "key": "limit",
-      "label": "Resultados",
-      "type": "number",
-      "default": "20"
-    }
+    { "key": "site", "label": "Site", "type": "choice", "choices": ["youtube", "soundcloud", "ytmusic"], "default": "youtube",
+      "description": "With YouTube Music, yt-dlp's fast search does not return artist or duration; prefer YouTube." },
+    { "key": "limit", "label": "Results", "type": "number", "default": "20" },
+    { "key": "matchSite", "label": "Site used to play other plugins' tracks", "type": "choice", "choices": ["youtube", "soundcloud"], "default": "youtube" },
+    { "key": "minScore", "label": "Minimum match score (0–1)", "type": "number", "default": "0.45" }
   ]
 }

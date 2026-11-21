@@ -30,6 +30,7 @@ type process struct {
 	dir      string
 	host     *Host
 	settings func() map[string]string
+	env      []string
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
@@ -38,6 +39,16 @@ type process struct {
 	pending sync.Map // id -> chan rpcResp
 	caps    map[string]bool
 	dead    error
+	// notify receives notifications other than "log" (e.g. "player.end").
+	notifyMu sync.Mutex
+	notify   func(method string, params json.RawMessage)
+}
+
+// OnNotify sets the handler of notifications sent by the plugin.
+func (p *process) OnNotify(f func(method string, params json.RawMessage)) {
+	p.notifyMu.Lock()
+	p.notify = f
+	p.notifyMu.Unlock()
 }
 
 type rpcReq struct {
@@ -54,8 +65,8 @@ type rpcResp struct {
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
-func newProcess(m *Manifest, dir string, host *Host, settings func() map[string]string) (*process, error) {
-	p := &process{m: m, dir: dir, host: host, settings: settings}
+func newProcess(m *Manifest, dir string, host *Host, settings func() map[string]string, env []string) (*process, error) {
+	p := &process{m: m, dir: dir, host: host, settings: settings, env: env}
 	if err := p.start(); err != nil {
 		return nil, err
 	}
@@ -80,6 +91,7 @@ func (p *process) start() error {
 	cmd := exec.Command(bin, args[1:]...)
 	cmd.Dir = p.dir
 	cmd.Env = append(os.Environ(), "MEOFISHES_PLUGIN="+p.m.ID, "MEOFISHES_VERSION="+p.host.Version)
+	cmd.Env = append(cmd.Env, p.env...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -151,6 +163,15 @@ func (p *process) readLoop(r io.Reader) {
 			p.host.logf(p.m.ID, "%s", lp.Message)
 			continue
 		}
+		if msg.Method != "" && msg.ID == 0 {
+			p.notifyMu.Lock()
+			f := p.notify
+			p.notifyMu.Unlock()
+			if f != nil {
+				f(msg.Method, msg.Params)
+			}
+			continue
+		}
 		if ch, ok := p.pending.LoadAndDelete(msg.ID); ok {
 			ch.(chan rpcResp) <- msg
 		}
@@ -195,6 +216,64 @@ func (p *process) rpc(ctx context.Context, method string, params, out any) error
 		}
 		return nil
 	}
+}
+
+// Caps are the capabilities the process announced in "initialize".
+// Older plugins announce "source"/"lyrics"/"hook"; they are mapped.
+func (p *process) Caps() map[string]bool {
+	c := map[string]bool{}
+	for k := range p.caps {
+		switch k {
+		case "source":
+			c[CapSearch], c[CapStream] = true, true
+		case "hook", "event":
+			c[CapEvents] = true
+		default:
+			c[k] = true
+		}
+	}
+	if c[CapSearch] && !c[CapStream] {
+		c[CapStream] = true
+	}
+	if c["resolve"] {
+		c[CapStream], c[CapMatch] = true, true
+	}
+	return c
+}
+
+// Call sends any method to the plugin (player plugins use player.*).
+func (p *process) Call(ctx context.Context, method string, params, out any) error {
+	return p.rpc(ctx, method, params, out)
+}
+
+func (p *process) Recommend(ctx context.Context, seed core.Track) (*core.SearchResult, error) {
+	var r core.SearchResult
+	if err := p.rpc(ctx, "recommend", map[string]any{"track": seed}, &r); err != nil {
+		return nil, err
+	}
+	for i := range r.Tracks {
+		r.Tracks[i].Source = p.m.ID
+	}
+	return &r, nil
+}
+
+func (p *process) Playlists(ctx context.Context) ([]core.Collection, error) {
+	var out []core.Collection
+	err := p.rpc(ctx, "playlists", nil, &out)
+	return out, err
+}
+
+func (p *process) Artwork(ctx context.Context, q lyrics.Query) (string, error) {
+	var r struct {
+		URL string `json:"url"`
+	}
+	err := p.rpc(ctx, "artwork", map[string]any{"query": map[string]any{
+		"title": q.Title, "artist": q.Artist, "album": q.Album, "durationMs": q.DurationMs, "isrc": q.ISRC, "videoId": q.VideoID,
+	}}, &r)
+	if err == nil && r.URL == "" {
+		err = lyrics.ErrNotFound
+	}
+	return r.URL, err
 }
 
 func (p *process) Search(ctx context.Context, q string) (*core.SearchResult, error) {

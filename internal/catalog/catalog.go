@@ -151,6 +151,9 @@ func (c *Catalog) Defaults() []Entry {
 	return out
 }
 
+// BuiltIn returns every entry of the built-in catalog.
+func (c *Catalog) BuiltIn() []Entry { return append([]Entry(nil), c.bundledIndex().Entries...) }
+
 // Materialize returns a local path or URL the installers understand.
 // For bundled entries the files are copied to a temp folder.
 func (c *Catalog) Materialize(e Entry) (src string, cleanup func(), err error) {

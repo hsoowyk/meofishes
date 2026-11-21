@@ -1,101 +1,69 @@
 # meofishes 🐟
 
-Um player de música em Go + Qt5 em que **toda a música vem de plugins**: quer
-ouvir de algum lugar? Instale o plugin e pronto.
+A music player in Go + Qt5 where **all the music comes from plugins**: want to
+listen from somewhere? Install the plugin and enjoy.
 
-- **Plugins de 4 tipos**: fontes de música, letras, layout da interface e eventos.
-- **3 jeitos de escrever plugins**: só JSON (endpoints + mapeamento de campos),
-  JavaScript com bibliotecas Go do app (`http`, `ytdlp`, `lavalink`, `lyrics`,
-  `crypto`, `storage`) ou um programa em Go (ou outra linguagem) com o SDK.
-- **Letras sincronizadas por palavra** por padrão, no plugin *Meo Lyrics*:
-  Lyprio → BetterLyrics → lrc.red → Unison → Paxsenix → Kugou.
-- **Interface 100% por CSS**: cores, fontes, animações, letras, capas, barras e
-  fundo. Temas são instalados e aplicados pela interface, com catálogo para
-  baixar. Tema padrão: **Fishalike**.
+- **Plugins** with informative, permissive types — `fnt` (sources of music,
+  lyrics, covers), `src` (search, home, recommendations, playlists), `ani`
+  (animations), `dep` (tools for other plugins), `xtm` (replace the player or
+  the icons), `evt` (events) — written as plain JSON, JavaScript with Go
+  modules, or any program (Go SDK included).
+- **Word-synced lyrics** by default (Lyprio → BetterLyrics → lrc.red → Unison
+  → Paxsenix → Kugou), a swiping current-lyric line, a fullscreen player with
+  a tilting cover, and a frequency visualizer when a song has no lyrics.
+- **Instant playback**: songs download in parallel parts and the next song is
+  prepared ahead of time.
+- **Playlists**, liked songs, plugin playlists, **.mepw** import/export.
+- **100% CSS** interface, themes from the app, and Settings that change
+  almost everything; animations at your screen's refresh rate.
+- **Developer mode** that shows everything the app does.
+- English, Português, Français, Türkçe, Deutsch, Español.
 
-## Requisitos
-
-| | Void Linux | outras |
-|---|---|---|
-| Go ≥ 1.26 | `xbps-install go` | |
-| Qt 5 (headers) | `xbps-install qt5-devel` | `qtbase5-dev` (Debian/Ubuntu), `qt5-base` (Arch) |
-| mpv (toca o áudio) | `xbps-install mpv` | |
-| yt-dlp (opcional: YouTube/SoundCloud) | `xbps-install yt-dlp` | |
-
-## Compilar e rodar
+## Install
 
 ```sh
-go build -o meofishes ./cmd/meofishes   # a 1ª vez demora (compila os bindings do Qt)
-./meofishes
+go build -ldflags="-s -w" -o meofishes ./cmd/meofishes   # see docs/building.md
+./install.sh            # or ./install.sh --user
 ```
 
-### Build mais rápido: Qt como biblioteca dinâmica
+Needs mpv (and yt-dlp for YouTube/SoundCloud). The first build compiles the Qt
+bindings: it is slow and needs a lot of RAM — `tools/qtlib/qtlib.sh` makes it
+much faster on machines with many cores.
 
-O `go build` compila os ~337 arquivos C++ do miqt praticamente um por vez.
-O `tools/qtlib/qtlib.sh` compila esses arquivos **uma vez, usando todos os
-núcleos**, numa biblioteca `libmiqt-qt5.so`, e faz o `go.mod` usar uma cópia
-do miqt que só linka contra ela:
+## Documentation
 
-```sh
-tools/qtlib/qtlib.sh enable      # compila a .so (JOBS=16 OPT=-O1) e ativa
-CGO_CXXFLAGS="-O1 -w" go build -ldflags="-s -w" -o meofishes ./cmd/meofishes
-tools/qtlib/qtlib.sh status      # o que está ativo
-tools/qtlib/qtlib.sh disable     # volta ao build normal
-```
+Everything is in **[docs/](docs/README.md)**: getting started, building,
+interface map, themes and every `-meo-*` property, plugins (all runtimes,
+types, the player and icon-pack protocols), lyrics, playlists and `.mepw`,
+streaming, settings, developer mode and translations.
 
-O binário passa a precisar da `libmiqt-qt5.so` ao rodar (procura no caminho
-de onde foi compilado). Para distribuir, use o build normal.
+## Em português
 
-Ferramentas de linha de comando:
+O meofishes é um player de música em que toda música vem de plugins. A
+interface pode ficar em português (Ajustes → Idioma). Para compilar e
+instalar, veja os comandos acima; a documentação completa está em `docs/`.
 
-```sh
-./meofishes lyrics "The Weeknd" "Blinding Lights"   # testa as letras
-./meofishes search ytdlp-search "daft punk"         # testa um plugin de fonte
-./meofishes check ./meu-plugin                      # valida um plugin.json
-./meofishes css ~/.local/share/meofishes/themes/fishalike
-```
-
-Atalhos: `Ctrl+Espaço` tocar/pausar · `Ctrl+←/→` anterior/próxima ·
-`Ctrl+F` buscar · `Ctrl+L` letras · `F5` recarregar o tema.
-
-## O que vem junto
-
-Instalados no primeiro uso: tema **Fishalike**, **Arquivos locais** (suas pastas
-de música), **YouTube / SoundCloud (yt-dlp)**, **Radio Browser** e o
-**Layout: Foco nas letras**.
-
-No catálogo (Plugins/Temas → instalar com um clique): temas **Abyss** e
-**Sakura Paper**, **Lavalink**, **LRCLIB**, **ListenBrainz** (scrobble),
-**Layout: Cinema** e **SomaFM (plugin em Go)**.
-
-## Provedores de letras
-
-| provedor | precisa de quê | estado |
-|---|---|---|
-| Lyprio | **URL base + chave de assinatura HMAC** (fornecidas pelos mantenedores do Lyprio) | desligado até configurar |
-| BetterLyrics | nada (chave `X-API-Key` só se a API passar a exigir) | ✓ palavra por palavra |
-| lrc.red | **User-Agent com nome do app, link e e-mail de contato** + crédito ao lrc.red | ligado depois que você preencher o contato em Ajustes |
-| Unison | nada (pede nome e link do app no User-Agent); uso só pessoal/não comercial ou projeto open-source | ✓ (acervo comunitário) |
-| Paxsenix | nada para `lyrics.paxsenix.org`; a API nova `api.paxsenix.org` usa chave Bearer | campo opcional de chave |
-| Kugou | nada | ✓ palavra por palavra (KRC) |
-
-Configure em **Plugins → Meo Lyrics → Configurar** e em **Ajustes → Contato**.
-
-## Estrutura
+## Layout of the code
 
 ```
 cmd/meofishes        main + CLI
-internal/core        tipos (Track, Lyrics…)
-internal/lyrics      parsers TTML/LRC/KRC, provedores e a cadeia de prioridade
-internal/plugin      manifesto, gerenciador, runtimes (declarativo/script/processo), módulos Go
-internal/builtin     plugins embutidos (Meo Lyrics, Arquivos locais)
-internal/theme       compilador de CSS (variáveis, funções de cor, -meo-*), easing
-internal/player      mpv via IPC JSON
-internal/catalog     catálogo de temas/plugins
-internal/ui          interface Qt (miqt)
-sdk/                 SDK Go para plugins "process"
-assets/              temas, plugins de exemplo e catálogo embutidos no binário
-docs/                PLUGINS.md e THEMES.md
+internal/app         wiring of everything that is not the interface
+internal/ui          Qt interface (miqt)
+internal/core        types (Track, Lyrics…)
+internal/plugin      manifest, types/permissions, manager, runtimes, Go modules, player plugins
+internal/builtin     built-in plugins (Meo Lyrics, Meo Artwork, Local files)
+internal/lyrics      TTML/LRC/KRC parsers, providers, priority chain
+internal/theme       CSS compiler (variables, color functions, -meo-*), easings
+internal/player      mpv over JSON IPC
+internal/stream      chunked download proxy
+internal/library     playlists, liked songs, history, .mepw
+internal/viz         frequency analysis for the visualizer
+internal/i18n        translations
+internal/netlog      network log (developer mode)
+internal/catalog     theme/plugin catalog
+sdk/                 Go SDK for process plugins
+assets/              bundled themes, plugins, catalog, translations
+tools/               qtlib (fast Qt build), uicheck (type-check without Qt), i18nkeys
+packaging/           .desktop file and icon
+docs/                documentation
 ```
-
-Guias: [docs/PLUGINS.md](docs/PLUGINS.md) · [docs/THEMES.md](docs/THEMES.md)

@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"meofishes/internal/pkgfs"
 )
@@ -180,6 +182,17 @@ func Ease(name string, t float64) float64 {
 		return 1
 	}
 	n := strings.ToLower(strings.NewReplacer("_", "-", " ", "").Replace(name))
+	if strings.HasPrefix(n, "cubic-bezier(") {
+		if b, ok := parseBezier(n); ok {
+			return b.at(t)
+		}
+	}
+	customMu.RLock()
+	b, ok := custom[n]
+	customMu.RUnlock()
+	if ok {
+		return b.at(t)
+	}
 	n = strings.TrimPrefix(n, "ease-")
 	switch n {
 	case "linear":
@@ -241,4 +254,88 @@ func bounce(t float64) float64 {
 	}
 	t -= 2.625 / d1
 	return n1*t*t + .984375
+}
+
+// ---------------------------------------------------------------- cubic-bezier
+
+type bezier struct{ x1, y1, x2, y2 float64 }
+
+var (
+	customMu sync.RWMutex
+	custom   = map[string]bezier{}
+)
+
+// RegisterEasing adds a named cubic-bezier curve (used by ani plugins).
+func RegisterEasing(name string, x1, y1, x2, y2 float64) {
+	customMu.Lock()
+	custom[strings.ToLower(name)] = bezier{x1, y1, x2, y2}
+	customMu.Unlock()
+}
+
+// ResetCustomEasings forgets the curves of ani plugins.
+func ResetCustomEasings() {
+	customMu.Lock()
+	custom = map[string]bezier{}
+	customMu.Unlock()
+}
+
+// CustomEasings lists the registered curve names.
+func CustomEasings() []string {
+	customMu.RLock()
+	defer customMu.RUnlock()
+	out := make([]string, 0, len(custom))
+	for k := range custom {
+		out = append(out, k)
+	}
+	return out
+}
+
+func parseBezier(s string) (bezier, bool) {
+	s = strings.TrimSuffix(strings.TrimPrefix(s, "cubic-bezier("), ")")
+	parts := strings.Split(s, ",")
+	if len(parts) != 4 {
+		return bezier{}, false
+	}
+	var v [4]float64
+	for i, p := range parts {
+		f, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
+		if err != nil {
+			return bezier{}, false
+		}
+		v[i] = f
+	}
+	return bezier{v[0], v[1], v[2], v[3]}, true
+}
+
+// at solves x(u) = t with Newton steps, then returns y(u) (like CSS).
+func (b bezier) at(t float64) float64 {
+	cx := 3 * b.x1
+	bx := 3*(b.x2-b.x1) - cx
+	ax := 1 - cx - bx
+	cy := 3 * b.y1
+	by := 3*(b.y2-b.y1) - cy
+	ay := 1 - cy - by
+	x := func(u float64) float64 { return ((ax*u+bx)*u + cx) * u }
+	dx := func(u float64) float64 { return (3*ax*u+2*bx)*u + cx }
+	u := t
+	for i := 0; i < 8; i++ {
+		d := dx(u)
+		if math.Abs(d) < 1e-6 {
+			break
+		}
+		u -= (x(u) - t) / d
+	}
+	if u < 0 || u > 1 || math.Abs(x(u)-t) > 1e-3 { // fall back to bisection
+		lo, hi := 0.0, 1.0
+		u = t
+		for i := 0; i < 30; i++ {
+			if x(u) < t {
+				lo = u
+			} else {
+				hi = u
+			}
+			u = (lo + hi) / 2
+		}
+	}
+	return ((ay*u+by)*u + cy) * u
 }

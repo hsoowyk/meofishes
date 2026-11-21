@@ -3,16 +3,16 @@
   "name": "ListenBrainz",
   "version": "1.0.0",
   "author": "meofishes",
-  "description": "Registra (scrobble) o que você ouve no ListenBrainz. Exemplo de plugin de eventos (hook).",
+  "description": "Scrobbles what you listen to on ListenBrainz. Example evt (events) plugin.",
   "homepage": "https://listenbrainz.org",
-  "types": ["hook"],
+  "types": ["evt"],
   "runtime": "script",
   "entry": "main.js",
   "modules": ["http"],
   "hosts": ["api.listenbrainz.org"],
   "events": ["track.start", "track.end"],
   "settings": [
-    { "key": "token", "label": "Token de usuário", "type": "password",
-      "description": "Em listenbrainz.org/settings — o plugin não faz nada sem ele." }
+    { "key": "token", "label": "User token", "type": "password",
+      "description": "From listenbrainz.org/settings — the plugin does nothing without it." }
   ]
 }

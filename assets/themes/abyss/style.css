@@ -1,5 +1,6 @@
 /* Abyss: extends Fishalike (see "extends" in theme.json) and only
-   redefines the palette. Every rule of the parent uses these variables. */
+   redefines the palette and a few details. Every rule of the parent uses
+   these variables. */
 :root {
   --wine-0: #050c14;
   --wine-1: #07111c;
@@ -18,13 +19,15 @@
 }
 
 #Pages { -meo-transition: fade; -meo-transition-duration: 300ms; }
+#CurrentLyric { -meo-swipe: left; }
 
-#LyricsView, #MiniLyrics, #PanelLyrics {
+#FullLyrics {
   -meo-align: center;
   -meo-opposite-align: center;
   -meo-glow-color: alpha(#9be7f5, .7);
   -meo-glow-radius: 4;
   -meo-scroll-easing: out-back;
+  -meo-word-animation: glow;
 }
 
 #Root { -meo-backdrop-glow-x: 0.2; -meo-backdrop-glow-y: 0.9; }

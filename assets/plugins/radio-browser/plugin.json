@@ -1,18 +1,18 @@
 {
   "id": "radio-browser",
   "name": "Radio Browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "meofishes",
-  "description": "Milhares de rádios online do radio-browser.info. Plugin 100% declarativo: só endpoints e mapeamento de campos, sem código.",
+  "description": "Thousands of online radios from radio-browser.info. 100% declarative: only endpoints and field mapping, no code.",
   "homepage": "https://www.radio-browser.info",
-  "types": ["source"],
+  "types": ["fnt", "src"],
   "runtime": "declarative",
   "hosts": ["*.api.radio-browser.info", "all.api.radio-browser.info"],
   "settings": [
-    { "key": "server", "label": "Servidor", "default": "https://de1.api.radio-browser.info",
-      "description": "Qualquer espelho listado em all.api.radio-browser.info" },
-    { "key": "limit", "label": "Resultados por busca", "type": "number", "default": "60" },
-    { "key": "country", "label": "Código do país na página inicial", "default": "BR" }
+    { "key": "server", "label": "Server", "default": "https://de1.api.radio-browser.info",
+      "description": "Any mirror listed at all.api.radio-browser.info" },
+    { "key": "limit", "label": "Results per search", "type": "number", "default": "60" },
+    { "key": "country", "label": "Country code for the home page", "default": "BR" }
   ],
   "source": {
     "baseUrl": "{{settings.server}}",

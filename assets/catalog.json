@@ -1,36 +1,152 @@
 {
-  "name": "meofishes",
-  "entries": [
-    { "kind": "theme", "id": "fishalike", "name": "Fishalike", "version": "1.0.0", "author": "meofishes",
-      "description": "O tema padrão: vermelho claro escurecido com toques de rosa.", "bundled": "themes/fishalike", "default": true,
-      "preview": { "background": "#241015", "surface": "#3b1a21", "accent": "#d9737a", "highlight": "#f4b4c6", "text": "#fbe9ec" } },
-    { "kind": "theme", "id": "abyss", "name": "Abyss", "version": "1.0.0", "author": "meofishes",
-      "description": "Azul de mar profundo com ciano. Estende o Fishalike.", "bundled": "themes/abyss",
-      "preview": { "background": "#07111c", "surface": "#11263a", "accent": "#3fb6d9", "highlight": "#9be7f5", "text": "#e6f6fb" } },
-    { "kind": "theme", "id": "sakura-paper", "name": "Sakura Paper", "version": "1.0.0", "author": "meofishes",
-      "description": "Tema claro: papel creme e rosa cerejeira.", "bundled": "themes/sakura-paper",
-      "preview": { "background": "#fbf3f1", "surface": "#f3dedd", "accent": "#c9505e", "highlight": "#e46f93", "text": "#3a1e24" } },
-
-    { "kind": "plugin", "id": "ytdlp-search", "name": "YouTube / SoundCloud (yt-dlp)", "version": "1.0.0", "author": "meofishes",
-      "description": "Busca no YouTube Music, YouTube ou SoundCloud via yt-dlp.", "types": ["source"], "runtime": "script",
-      "bundled": "plugins/ytdlp-search", "default": true },
-    { "kind": "plugin", "id": "radio-browser", "name": "Radio Browser", "version": "1.0.0", "author": "meofishes",
-      "description": "Milhares de rádios online. Plugin declarativo.", "types": ["source"], "runtime": "declarative",
-      "bundled": "plugins/radio-browser", "default": true },
-    { "kind": "plugin", "id": "layout-focus", "name": "Layout: Foco nas letras", "version": "1.0.0", "author": "meofishes",
-      "description": "Letras grandes no centro.", "types": ["layout"], "bundled": "plugins/layout-focus", "default": true },
-    { "kind": "plugin", "id": "layout-cinema", "name": "Layout: Cinema", "version": "1.0.0", "author": "meofishes",
-      "description": "Player no topo, letras embaixo.", "types": ["layout"], "bundled": "plugins/layout-cinema" },
-    { "kind": "plugin", "id": "lavalink", "name": "Lavalink", "version": "1.0.0", "author": "meofishes",
-      "description": "Busca num servidor Lavalink v4 (precisa de um servidor).", "types": ["source"], "runtime": "script",
-      "bundled": "plugins/lavalink" },
-    { "kind": "plugin", "id": "lrclib", "name": "LRCLIB", "version": "1.0.0", "author": "meofishes",
-      "description": "Letras por linha do lrclib.net como reserva.", "types": ["lyrics"], "runtime": "declarative",
-      "bundled": "plugins/lrclib" },
-    { "kind": "plugin", "id": "listenbrainz", "name": "ListenBrainz", "version": "1.0.0", "author": "meofishes",
-      "description": "Scrobble no ListenBrainz.", "types": ["hook"], "runtime": "script", "bundled": "plugins/listenbrainz" },
-    { "kind": "plugin", "id": "somafm-go", "name": "SomaFM (plugin em Go)", "version": "1.0.0", "author": "meofishes",
-      "description": "Exemplo de plugin 'process' em Go (compilado na instalação).", "types": ["source"], "runtime": "process",
-      "bundled": "plugins/somafm-go" }
-  ]
+ "name": "meofishes",
+ "entries": [
+  {
+   "kind": "theme",
+   "id": "fishalike",
+   "name": "Fishalike",
+   "version": "2.0.0",
+   "author": "meofishes",
+   "description": "The default theme: a darkened light red with pink touches.",
+   "bundled": "themes/fishalike",
+   "default": true,
+   "preview": {
+    "background": "#241015",
+    "surface": "#3b1a21",
+    "accent": "#d9737a",
+    "highlight": "#f4b4c6",
+    "text": "#fbe9ec"
+   }
+  },
+  {
+   "kind": "theme",
+   "id": "abyss",
+   "name": "Abyss",
+   "version": "2.0.0",
+   "author": "meofishes",
+   "description": "Deep sea blue with cyan. Extends Fishalike.",
+   "bundled": "themes/abyss",
+   "preview": {
+    "background": "#07111c",
+    "surface": "#11263a",
+    "accent": "#3fb6d9",
+    "highlight": "#9be7f5",
+    "text": "#e6f6fb"
+   }
+  },
+  {
+   "kind": "theme",
+   "id": "sakura-paper",
+   "name": "Sakura Paper",
+   "version": "2.0.0",
+   "author": "meofishes",
+   "description": "Light theme: cream paper and cherry pink.",
+   "bundled": "themes/sakura-paper",
+   "preview": {
+    "background": "#fbf3f1",
+    "surface": "#f3dedd",
+    "accent": "#c9505e",
+    "highlight": "#e46f93",
+    "text": "#3a1e24"
+   }
+  },
+  {
+   "kind": "plugin",
+   "id": "ytdlp-search",
+   "name": "YouTube / SoundCloud (yt-dlp)",
+   "version": "2.0.0",
+   "author": "meofishes",
+   "description": "Search YouTube, YouTube Music or SoundCloud with the 'ytdlp' Go module (needs yt-dlp). Also plays tracks from metadata-only plugins (Deezer…) by finding them on YouTube, and recommends tracks through YouTube mixes.",
+   "types": [
+    "fnt",
+    "src"
+   ],
+   "runtime": "script",
+   "bundled": "plugins/ytdlp-search",
+   "default": true
+  },
+  {
+   "kind": "plugin",
+   "id": "radio-browser",
+   "name": "Radio Browser",
+   "version": "1.1.0",
+   "author": "meofishes",
+   "description": "Thousands of online radios from radio-browser.info. 100% declarative: only endpoints and field mapping, no code.",
+   "types": [
+    "fnt",
+    "src"
+   ],
+   "runtime": "declarative",
+   "bundled": "plugins/radio-browser",
+   "default": true
+  },
+  {
+   "kind": "plugin",
+   "id": "deezer",
+   "name": "Deezer (search & charts)",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Search, charts and artist radios from the public Deezer API, with real album covers. Metadata only: tracks are played through an fnt plugin with \"match\" (e.g. yt-dlp). 100% declarative.",
+   "types": [
+    "src"
+   ],
+   "runtime": "declarative",
+   "bundled": "plugins/deezer",
+   "default": true
+  },
+  {
+   "kind": "plugin",
+   "id": "lavalink",
+   "name": "Lavalink",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Searches a Lavalink v4 server (YouTube, SoundCloud, Bandcamp, Spotify/Deezer/Apple through LavaSrc…). Lavalink resolves the tracks; the audio plays through mpv.",
+   "types": [
+    "fnt",
+    "src"
+   ],
+   "runtime": "script",
+   "bundled": "plugins/lavalink"
+  },
+  {
+   "kind": "plugin",
+   "id": "lrclib",
+   "name": "LRCLIB",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Line-synced lyrics from lrclib.net, as a fallback for Meo Lyrics. Example declarative fnt (lyrics) plugin.",
+   "types": [
+    "fnt"
+   ],
+   "runtime": "declarative",
+   "bundled": "plugins/lrclib"
+  },
+  {
+   "kind": "plugin",
+   "id": "listenbrainz",
+   "name": "ListenBrainz",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "Scrobbles what you listen to on ListenBrainz. Example evt (events) plugin.",
+   "types": [
+    "evt"
+   ],
+   "runtime": "script",
+   "bundled": "plugins/listenbrainz"
+  },
+  {
+   "kind": "plugin",
+   "id": "somafm-go",
+   "name": "SomaFM (Go plugin)",
+   "version": "1.0.0",
+   "author": "meofishes",
+   "description": "SomaFM radios. Example 'process' plugin written in Go: built at install time (needs Go) and free to use any Go library.",
+   "types": [
+    "fnt",
+    "src"
+   ],
+   "runtime": "process",
+   "bundled": "plugins/somafm-go"
+  }
+ ]
 }

@@ -1,12 +1,12 @@
 // Package plugin implements meofishes' plugin system.
 //
 // A plugin is a folder with a plugin.json manifest. It declares one or more
-// types (what it provides) and one runtime (how it runs):
+// types (what it is for) and one runtime (how it runs):
 //
-//	types:   source | lyrics | layout | hook
+//	types:   fnt | src | ani | dep | xtm | evt
 //	runtime: declarative | script | process | builtin
 //
-// See docs/PLUGINS.md for the full guide.
+// See docs/plugins/ for the full guide.
 package plugin
 
 import (
@@ -19,12 +19,67 @@ import (
 	"strings"
 )
 
-// Plugin types.
+// Plugin types (the short codes shown in the app).
 const (
-	TypeSource = "source" // provides music: search, browse, stream
-	TypeLyrics = "lyrics" // provides lyrics
-	TypeLayout = "layout" // rearranges the UI regions
-	TypeHook   = "hook"   // reacts to player events (scrobblers, rich presence…)
+	TypeFnt = "fnt" // sources of music/video/lyrics/artwork: resolve streams, lyrics, covers
+	TypeSrc = "src" // search, home page, recommendations, playlists
+	TypeAni = "ani" // animation changes: CSS animation layer + easing curves
+	TypeDep = "dep" // tools for other plugins: JS libraries, executables
+	TypeXtm = "xtm" // extreme changes: replace the player (mpv) or the icon pack
+	TypeEvt = "evt" // reacts to player events (scrobblers, rich presence…)
+)
+
+// Permissions maps each type to the capabilities it allows. Types are
+// informative (shown in the app) and permissive: a plugin can only use the
+// capabilities of the types it declares.
+var Permissions = map[string][]string{
+	TypeFnt: {CapStream, CapMatch, CapLyrics, CapArtwork},
+	TypeSrc: {CapSearch, CapHome, CapRecommend, CapPlaylists, CapOpen},
+	TypeAni: {CapAnimation},
+	TypeDep: {CapLibrary},
+	TypeXtm: {CapPlayer, CapIcons},
+	TypeEvt: {CapEvents},
+}
+
+// Allows reports whether the declared types permit a capability.
+func (m *Manifest) Allows(c string) bool {
+	for _, t := range m.Types {
+		for _, x := range Permissions[t] {
+			if x == c {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Types lists every type code in display order.
+var Types = []string{TypeFnt, TypeSrc, TypeAni, TypeDep, TypeXtm, TypeEvt}
+
+// legacyTypes maps the names used before 0.2 to the new codes.
+var legacyTypes = map[string][]string{
+	"source": {TypeFnt, TypeSrc},
+	"lyrics": {TypeFnt},
+	"hook":   {TypeEvt},
+}
+
+// Capabilities a plugin may provide. They are discovered from the runtime
+// (exported JS functions, declarative blocks, process "capabilities").
+const (
+	CapSearch    = "search"    // src
+	CapHome      = "home"      // src
+	CapRecommend = "recommend" // src
+	CapPlaylists = "playlists" // src
+	CapOpen      = "open"      // src: list the tracks of a collection
+	CapStream    = "stream"    // fnt: resolve its own tracks to a URL
+	CapMatch     = "match"     // fnt: resolve ANY track by title/artist
+	CapLyrics    = "lyrics"    // fnt
+	CapArtwork   = "artwork"   // fnt: find a cover for a track
+	CapEvents    = "events"    // evt
+	CapPlayer    = "player"    // xtm: replaces mpv
+	CapIcons     = "icons"     // xtm: icon pack
+	CapAnimation = "animation" // ani
+	CapLibrary   = "library"   // dep: require("dep:<id>")
 )
 
 // Runtimes.
@@ -68,10 +123,31 @@ type Manifest struct {
 
 	Settings []Setting `json:"settings,omitempty"`
 
-	Source *DeclSource `json:"source,omitempty"` // declarative source definition
-	Lyrics *DeclLyrics `json:"lyrics,omitempty"` // declarative lyrics definition
-	Layout *LayoutNode `json:"layout,omitempty"` // layout plugins
-	Events []string    `json:"events,omitempty"` // hook plugins: events to receive ("*" = all)
+	// dep: other plugins this one needs (ids). Missing ones are reported.
+	Requires []string `json:"requires,omitempty"`
+	// dep: a folder (relative) with executables added to PATH of process
+	// plugins that require this one.
+	Bin string `json:"bin,omitempty"`
+
+	Source  *DeclSource  `json:"source,omitempty"`  // declarative src/fnt definition
+	Lyrics  *DeclLyrics  `json:"lyrics,omitempty"`  // declarative lyrics definition
+	Artwork *DeclArtwork `json:"artwork,omitempty"` // declarative artwork definition
+	Events  []string     `json:"events,omitempty"`  // evt: events to receive ("*" = all)
+
+	// fnt: this plugin can play any track by searching its title/artist.
+	Match bool `json:"match,omitempty"`
+
+	// ani: a CSS file applied over the theme (only animation -meo-* props
+	// are meant to go there) and named cubic-bezier easing curves.
+	Animations string                `json:"animations,omitempty"`
+	Easings    map[string][4]float64 `json:"easings,omitempty"`
+
+	// xtm: an icon pack folder (one SVG/PNG per icon name).
+	Icons string `json:"icons,omitempty"`
+	// xtm: icons are single-color and should be tinted by the theme.
+	IconsTint *bool `json:"iconsTint,omitempty"`
+	// xtm: this process plugin implements the player protocol (replaces mpv).
+	Player bool `json:"player,omitempty"`
 }
 
 // Has reports whether the plugin provides type t.
@@ -106,25 +182,21 @@ func (m *Manifest) Validate() error {
 		errs = append(errs, "name is required")
 	}
 	if len(m.Types) == 0 {
-		errs = append(errs, "types must list at least one of source, lyrics, layout, hook")
+		errs = append(errs, "types must list at least one of "+strings.Join(Types, ", "))
 	}
 	for _, t := range m.Types {
 		switch t {
-		case TypeSource, TypeLyrics, TypeLayout, TypeHook:
+		case TypeFnt, TypeSrc, TypeAni, TypeDep, TypeXtm, TypeEvt:
+		case "layout":
+			errs = append(errs, "layout plugins were removed in 0.2: layouts are part of the app now")
 		default:
-			errs = append(errs, fmt.Sprintf("unknown type %q", t))
+			errs = append(errs, fmt.Sprintf("unknown type %q (use %s)", t, strings.Join(Types, ", ")))
 		}
 	}
 	switch m.Runtime {
 	case RuntimeDeclarative:
-		if m.Has(TypeSource) && m.Source == nil {
-			errs = append(errs, `declarative source plugins need a "source" block`)
-		}
-		if m.Has(TypeLyrics) && m.Lyrics == nil {
-			errs = append(errs, `declarative lyrics plugins need a "lyrics" block`)
-		}
-		if m.Has(TypeHook) {
-			errs = append(errs, "hook plugins need the script or process runtime")
+		if m.Source == nil && m.Lyrics == nil && m.Artwork == nil {
+			errs = append(errs, `declarative plugins need a "source", "lyrics" or "artwork" block`)
 		}
 	case RuntimeScript, RuntimeProcess:
 		if m.Entry == "" {
@@ -132,14 +204,20 @@ func (m *Manifest) Validate() error {
 		}
 	case RuntimeBuiltin:
 	case "":
-		if !(len(m.Types) == 1 && m.Types[0] == TypeLayout) {
+		// asset-only plugins: ani (CSS), xtm icon packs
+		if m.Animations == "" && m.Icons == "" {
 			errs = append(errs, "runtime is required")
 		}
 	default:
 		errs = append(errs, fmt.Sprintf("unknown runtime %q", m.Runtime))
 	}
-	if m.Has(TypeLayout) && m.Layout == nil {
-		errs = append(errs, `layout plugins need a "layout" block`)
+	if m.Player && m.Runtime != RuntimeProcess {
+		errs = append(errs, `"player": true needs the process runtime`)
+	}
+	for _, f := range []string{m.Animations, m.Icons, m.Bin} {
+		if f != "" && (filepath.IsAbs(f) || strings.Contains(filepath.ToSlash(f), "../")) {
+			errs = append(errs, fmt.Sprintf("%q must be a path inside the plugin folder", f))
+		}
 	}
 	for _, mod := range m.Modules {
 		if _, ok := moduleDocs[mod]; !ok {
@@ -152,6 +230,25 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
+// normalizeTypes converts legacy type names and removes duplicates.
+func (m *Manifest) normalizeTypes() {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range m.Types {
+		ts := []string{t}
+		if l, ok := legacyTypes[t]; ok {
+			ts = l
+		}
+		for _, x := range ts {
+			if !seen[x] {
+				seen[x] = true
+				out = append(out, x)
+			}
+		}
+	}
+	m.Types = out
+}
+
 // LoadManifest reads dir/plugin.json.
 func LoadManifest(dir string) (*Manifest, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "plugin.json"))
@@ -162,6 +259,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("plugin.json: %w", err)
 	}
+	m.normalizeTypes()
 	if err := m.Validate(); err != nil {
 		return &m, fmt.Errorf("plugin.json: %w", err)
 	}
@@ -198,6 +296,8 @@ type DeclSource struct {
 	Search *Endpoint `json:"search"`
 	// Home (optional) fills the start page.
 	Home *Endpoint `json:"home,omitempty"`
+	// Recommend (optional) lists tracks similar to {{track.*}} (radio/autoplay).
+	Recommend *Endpoint `json:"recommend,omitempty"`
 	// Resolve (optional) turns a track into a stream URL: called with {{track.*}},
 	// the URL is read from "path" in the response.
 	Resolve *struct {
@@ -207,6 +307,8 @@ type DeclSource struct {
 	// Resolver says how the final URL is played:
 	//   "direct" (default) – the URL is an audio stream
 	//   "ytdlp"           – the URL is a web page; the ytdlp module extracts the audio
+	//   "match"           – the plugin only has metadata: meofishes plays the
+	//                       track through an fnt plugin with "match": true
 	Resolver string `json:"resolver,omitempty"`
 }
 
@@ -222,41 +324,14 @@ type DeclLyrics struct {
 	Credit     string            `json:"credit,omitempty"`
 }
 
-// LayoutNode is one node of a layout tree.
-//
-//	{"box": "v", "children": [...]}          vertical box
-//	{"split": "h", "sizes": [240, 800]}      resizable splitter
-//	{"region": "lyrics", "stretch": 2}       a UI region
-//
-// Regions: sidebar, pages, nowplaying, lyrics, queue, playerbar, cover, spacer.
-type LayoutNode struct {
-	Box      string        `json:"box,omitempty"`   // h | v
-	Split    string        `json:"split,omitempty"` // h | v
-	Region   string        `json:"region,omitempty"`
-	Name     string        `json:"name,omitempty"` // objectName, so CSS can target it (#name)
-	Stretch  int           `json:"stretch,omitempty"`
-	Sizes    []int         `json:"sizes,omitempty"`
-	Spacing  *int          `json:"spacing,omitempty"`
-	Margins  []int         `json:"margins,omitempty"` // [l, t, r, b]
-	MinW     int           `json:"minWidth,omitempty"`
-	MaxW     int           `json:"maxWidth,omitempty"`
-	MinH     int           `json:"minHeight,omitempty"`
-	MaxH     int           `json:"maxHeight,omitempty"`
-	Children []*LayoutNode `json:"children,omitempty"`
-}
-
-// Regions lists every region name the UI knows.
-var Regions = []string{"sidebar", "pages", "nowplaying", "lyrics", "queue", "playerbar", "cover", "spacer"}
-
-// DefaultLayout is used when no layout plugin is active.
-func DefaultLayout() *LayoutNode {
-	zero := 0
-	return &LayoutNode{Box: "v", Spacing: &zero, Children: []*LayoutNode{
-		{Split: "h", Name: "MainSplit", Stretch: 1, Sizes: []int{230, 760, 380}, Children: []*LayoutNode{
-			{Region: "sidebar", MinW: 190, MaxW: 320},
-			{Region: "pages", Stretch: 1},
-			{Region: "nowplaying", MinW: 300},
-		}},
-		{Region: "playerbar"},
-	}}
+// DeclArtwork is the "artwork" block of a declarative fnt plugin. Called
+// with the same variables as lyrics; "path" points at the image URL.
+type DeclArtwork struct {
+	BaseURL string            `json:"baseUrl,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Request Request           `json:"request"`
+	Path    string            `json:"path"`
+	// Optional: replace part of the URL to ask for a bigger image, e.g.
+	// ["100x100bb", "600x600bb"] for iTunes.
+	Replace []string `json:"replace,omitempty"`
 }

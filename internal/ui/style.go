@@ -12,6 +12,7 @@ import (
 
 // Styler gives widgets access to the compiled theme's -meo-* properties.
 type Styler struct {
+	speed     func() float64
 	c         *theme.Compiled
 	listeners []func()
 	keyed     map[any]func()
@@ -67,6 +68,11 @@ type P struct {
 
 func (s *Styler) For(w *qt.QWidget, kind string) P { return P{s, Selectors(w, kind)} }
 
+// ForName reads properties by object name, before the widget exists.
+func (s *Styler) ForName(name, kind string) P {
+	return P{s, []string{kind + "#" + name, "#" + name, kind}}
+}
+
 func (p P) Str(name, def string) string {
 	if v, ok := p.s.c.Prop(p.sels, name); ok {
 		return strings.Trim(v, `"' `)
@@ -98,6 +104,20 @@ func (p P) Num(name string, def float64) float64 {
 func (p P) Ms(name string, def int) int {
 	v, _ := p.s.c.Prop(p.sels, name)
 	return theme.Duration(v, def)
+}
+
+// MsScaled is Ms divided by the animation speed setting (0 when animations
+// are reduced).
+func (p P) MsScaled(name string, def int) int {
+	ms := p.Ms(name, def)
+	if p.s.speed != nil {
+		k := p.s.speed()
+		if k <= 0.01 {
+			return 0
+		}
+		return int(float64(ms) / k)
+	}
+	return ms
 }
 
 func (p P) Bool(name string, def bool) bool {

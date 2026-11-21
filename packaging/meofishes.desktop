@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=meofishes
+GenericName=Music Player
+GenericName[pt_BR]=Player de música
+Comment=Music from plugins, with word-synced lyrics
+Comment[pt_BR]=Música por plugins, com letras sincronizadas por palavra
+Exec=@BIN@ %U
+TryExec=@BIN@
+Icon=meofishes
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;Qt;
+Keywords=music;player;lyrics;plugins;mpv;
+StartupWMClass=meofishes

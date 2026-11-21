@@ -17,7 +17,7 @@ import (
 
 func TestLiveRuntimes(t *testing.T) {
 	dir := t.TempDir()
-	for _, id := range []string{"radio-browser", "ytdlp-search", "somafm-go", "lrclib", "layout-focus"} {
+	for _, id := range []string{"radio-browser", "ytdlp-search", "somafm-go", "lrclib", "deezer"} {
 		if err := pkgfs.CopyFS(os.DirFS("../../assets/plugins/"+id), ".", filepath.Join(dir, id)); err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +49,7 @@ func TestLiveRuntimes(t *testing.T) {
 			t.Errorf("%s: no tracks", id)
 			continue
 		}
-		st, err := p.Source().Resolve(ctx, r.Tracks[0])
+		st, err := m.Resolve(ctx, r.Tracks[0])
 		t.Logf("%s: %d tracks, first=%q artist=%q stream=%v err=%v", id, len(r.Tracks), r.Tracks[0].Title, r.Tracks[0].Artist, st, err)
 	}
 	l, err := m.Get("lrclib").LyricsSource().Lyrics(ctx, lyricsQ())
@@ -58,8 +58,26 @@ func TestLiveRuntimes(t *testing.T) {
 	} else {
 		t.Logf("lrclib: %s, %d lines", l.Sync, len(l.Lines))
 	}
-	if lay, _ := m.ActiveLayout(); lay == nil {
-		t.Error("no layout")
+	for _, p := range m.All() {
+		t.Logf("caps %s: %v", p.Manifest.ID, p.Caps())
+	}
+	// src-only plugin (Deezer) played through the fnt "match" plugin (yt-dlp)
+	dz := m.Get("deezer")
+	r, err := m.Search(ctx, dz, "daft punk one more time")
+	if err != nil || len(r.Tracks) == 0 {
+		t.Fatalf("deezer: %v", err)
+	}
+	t.Logf("deezer: %q by %q cover=%s", r.Tracks[0].Title, r.Tracks[0].Artist, r.Tracks[0].Cover)
+	st, err := m.Resolve(ctx, r.Tracks[0])
+	if err != nil {
+		t.Errorf("match resolve: %v", err)
+	} else {
+		t.Logf("matched via %s: %s", st.Via, st.URL)
+	}
+	recs, via, err := m.Recommend(ctx, r.Tracks[0])
+	t.Logf("recommend via %s: %d tracks, err=%v", via, len(recs), err)
+	if err != nil || len(recs) == 0 {
+		t.Errorf("recommend: %v", err)
 	}
 }
 

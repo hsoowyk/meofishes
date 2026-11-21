@@ -14,7 +14,16 @@ type Animator struct {
 	timer   *qt.QTimer
 	tweens  map[any]*tween
 	tickers map[any]func(now time.Time) bool
+	// Speed multiplies tween durations (Settings → Animations); 0 = instant.
+	Speed func() float64
+	// OnFrame is called once per frame (developer mode FPS meter).
+	OnFrame func(now time.Time)
+	// Hz is the frame rate (the screen's refresh rate).
+	Hz float64
 }
+
+// Active is the number of running tweens and tickers (developer mode).
+func (a *Animator) Active() (tweens, tickers int) { return len(a.tweens), len(a.tickers) }
 
 type tween struct {
 	start    time.Time
@@ -29,9 +38,36 @@ type tween struct {
 func NewAnimator() *Animator {
 	a := &Animator{tweens: map[any]*tween{}, tickers: map[any]func(time.Time) bool{}}
 	a.timer = qt.NewQTimer()
-	a.timer.SetInterval(15)
+	a.timer.SetTimerType(qt.PreciseTimer)
+	a.SetRefreshRate(60)
 	a.timer.OnTimeout(a.tick)
 	return a
+}
+
+// SetRefreshRate makes frames match the screen (60, 75, 144 Hz…).
+func (a *Animator) SetRefreshRate(hz float64) {
+	if hz < 20 || hz > 500 {
+		hz = 60
+	}
+	a.Hz = hz
+	a.timer.SetInterval(max(1, int(1000/hz+0.5)))
+}
+
+// FollowScreen tracks the refresh rate of the screen the window is on.
+func (a *Animator) FollowScreen(w *qt.QWidget) {
+	if s := qt.QGuiApplication_PrimaryScreen(); s != nil {
+		a.SetRefreshRate(s.RefreshRate())
+	}
+	if wh := w.WindowHandle(); wh != nil {
+		if s := wh.Screen(); s != nil {
+			a.SetRefreshRate(s.RefreshRate())
+		}
+		wh.OnScreenChanged(func(s *qt.QScreen) {
+			if s != nil {
+				a.SetRefreshRate(s.RefreshRate())
+			}
+		})
+	}
 }
 
 func (a *Animator) wake() {
@@ -43,6 +79,15 @@ func (a *Animator) wake() {
 // Tween runs step(eased t) for dur. key replaces any running tween with the
 // same key (step is not called again for the old one).
 func (a *Animator) Tween(key any, dur, delay time.Duration, ease string, step func(t float64), done func()) {
+	if a.Speed != nil {
+		k := a.Speed()
+		if k <= 0.01 {
+			dur, delay = 0, 0
+		} else {
+			dur = time.Duration(float64(dur) / k)
+			delay = time.Duration(float64(delay) / k)
+		}
+	}
 	if dur <= 0 {
 		step(1)
 		if done != nil {
@@ -73,6 +118,9 @@ func (a *Animator) Cancel(keys ...any) {
 
 func (a *Animator) tick() {
 	now := time.Now()
+	if a.OnFrame != nil {
+		a.OnFrame(now)
+	}
 	for k, tw := range a.tweens {
 		el := now.Sub(tw.start) - tw.delay
 		if el < 0 {
