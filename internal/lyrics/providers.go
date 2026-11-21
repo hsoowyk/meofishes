@@ -203,7 +203,11 @@ func (p BetterLyrics) Fetch(ctx context.Context, q Query) (*core.Lyrics, error) 
 		hdr["X-API-Key"] = k
 	}
 	var resp map[string]any
-	if _, err := p.Env.getJSON(ctx, "https://api.betterlyrics.org/getLyrics?"+v.Encode(), hdr, &resp); err != nil {
+	if code, err := p.Env.getJSON(ctx, "https://api.betterlyrics.org/getLyrics?"+v.Encode(), hdr, &resp); err != nil {
+		if code == 401 || code == 403 {
+			// only cached lyrics are open; the rest needs a browser-only token
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	for _, key := range []string{"ttml", "lyrics"} {

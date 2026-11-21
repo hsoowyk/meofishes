@@ -79,6 +79,8 @@ type MPV struct {
 	// position interpolation
 	posAt    time.Time
 	audioFmt string
+	// NoVideo is set when mpv had to start without the video options.
+	NoVideo bool
 	// get_property results by request id
 	dataMu sync.Mutex
 	data   map[int64]json.RawMessage
@@ -126,7 +128,7 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 		args = append(args, fmt.Sprintf("--wid=%d", opt.Wid), "--keepaspect=yes", "--hwdec=auto-safe",
 			"--osc=no", "--osd-level=0", "--input-cursor=no", "--input-default-bindings=no", "--cursor-autohide=no")
 		if opt.X11Video {
-			args = append(args, "--gpu-context=x11egl,x11")
+			args = append(args, "--gpu-context=x11egl")
 		}
 	}
 	if opt.Normalize {
@@ -158,6 +160,16 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 	}
 	if err != nil {
 		_ = cmd.Process.Kill()
+		_ = cmd.Wait() // reap it (no zombie mpv)
+		if opt.Wid != 0 {
+			// a video option this mpv does not accept must never stop the music:
+			// try again without video
+			opt.Wid = 0
+			if m, err2 := Start(runtimeDir, opt, ev); err2 == nil {
+				m.NoVideo = true
+				return m, nil
+			}
+		}
 		return nil, fmt.Errorf("connect to mpv: %w", err)
 	}
 	m.conn = conn

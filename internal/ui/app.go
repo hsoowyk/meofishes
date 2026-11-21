@@ -1314,7 +1314,7 @@ func (u *UI) setVideo(on bool) {
 		u.toast(tr("Video needs mpv as the player"))
 		return
 	}
-	if on && u.full.video.WinId() == 0 {
+	if on && (u.full.video.WinId() == 0 || u.mpv.NoVideo) {
 		u.toast(tr("Video is not available on this system"))
 		return
 	}
