@@ -227,6 +227,8 @@ func (u *UI) goPage(id string) {
 	switch id {
 	case "home":
 		u.home.refresh()
+	case "together":
+		u.togetherPg.refresh()
 	case "settings":
 		u.setPg.refresh()
 	case "library":

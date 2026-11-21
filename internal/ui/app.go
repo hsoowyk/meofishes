@@ -72,6 +72,8 @@ type UI struct {
 	mprisTick       int
 	eqTimer         *qt.QTimer
 	listenMs        int64 // time the current song really played (statistics)
+	lt              listenTogether
+	togetherPg      *togetherPage
 	prefetched      map[string]prefetch
 	autoplayOn      bool // a recommendation request is running
 	restorePos      int64
@@ -517,6 +519,9 @@ func (u *UI) startTimers() {
 
 // PlayList replaces the queue and starts track i.
 func (u *UI) PlayList(ts []core.Track, i int) {
+	if u.ltGuestBlocked() {
+		return
+	}
 	u.queue = append([]core.Track(nil), ts...)
 	u.qIndex = i
 	if u.cfg.Shuffle {
@@ -834,6 +839,9 @@ func (u *UI) playCurrent() {
 				return
 			}
 			u.stream, u.streamFrom, u.streamTrack = st, from, track
+			if u.lt.host {
+				singleShot(600, u.ltSendCurrent) // the room follows the host
+			}
 			if u.full.open {
 				u.full.syncRight()
 			}
@@ -841,7 +849,9 @@ func (u *UI) playCurrent() {
 			if restore > 0 {
 				singleShot(900, func() {
 					if gen == u.gen {
+						u.lt.applying = true // our own restore, not a listener's seek
 						u.SeekTo(restore)
+						u.lt.applying = false
 					}
 				})
 			}
@@ -895,6 +905,9 @@ func (u *UI) onTrackEnded() {
 
 // Next plays the next track (autoplay asks src plugins for more at the end).
 func (u *UI) Next(manual bool) {
+	if manual && u.ltGuestBlocked() {
+		return
+	}
 	if len(u.queue) == 0 {
 		return
 	}
@@ -989,6 +1002,9 @@ func (u *UI) addRecommendations(ts []core.Track, via string, play bool) {
 
 // Prev restarts the track, or goes back when near its start.
 func (u *UI) Prev() {
+	if u.ltGuestBlocked() {
+		return
+	}
 	if u.state().PositionMs > 4000 || u.qIndex <= 0 {
 		u.SeekTo(0)
 		return
@@ -1001,6 +1017,10 @@ func (u *UI) Prev() {
 
 // TogglePlay pauses/resumes (or starts the queue).
 func (u *UI) TogglePlay() {
+	if u.ltGuestBlocked() {
+		return
+	}
+	defer singleShot(150, u.ltPlayState)
 	if u.player == nil {
 		return
 	}
@@ -1022,6 +1042,10 @@ func (u *UI) TogglePlay() {
 
 // SeekTo jumps to a position.
 func (u *UI) SeekTo(ms int64) {
+	if !u.lt.applying && u.ltGuestBlocked() {
+		return
+	}
+	u.ltSeek(ms)
 	if u.player != nil {
 		_ = u.player.SeekTo(max(0, ms))
 		if u.mpris != nil {

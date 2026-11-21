@@ -52,16 +52,3 @@ the Go compiler's memory kept low. The binary is uploaded as an artifact.
 
 After changing interface strings run `go run ./tools/i18nkeys` (see
 [i18n.md](i18n.md)).
-
-## macOS and Windows (experimental)
-
-macOS: `brew install go qt@5 pkg-config mpv yt-dlp`, then
-`PKG_CONFIG_PATH="$(brew --prefix qt@5)/lib/pkgconfig" go build -o meofishes ./cmd/meofishes`.
-
-Windows (MSYS2 MinGW64 shell): `pacman -S mingw-w64-x86_64-go
-mingw-w64-x86_64-gcc mingw-w64-x86_64-qt5-base mingw-w64-x86_64-pkgconf`, then
-`go build -ldflags="-H windowsgui" -o meofishes.exe ./cmd/meofishes` and
-`windeployqt meofishes.exe` to copy the Qt DLLs. mpv and yt-dlp must be in
-PATH.
-
-The GitHub workflow builds both as experimental jobs (`continue-on-error`).

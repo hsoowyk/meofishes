@@ -107,6 +107,7 @@ func (u *UI) buildTopBar() *qt.QWidget {
 	add("search", "search", tr("Search (Ctrl+F)"))
 	add("library", "library", tr("Library (Ctrl+3)"))
 	add("queue", "queue", tr("Queue (Ctrl+4)"))
+	add("together", "people", tr("Listen together"))
 	add("settings", "settings", tr("Settings (Ctrl+,)"))
 	add("dev", "code", tr("Developer mode"))
 	hide := u.iconButton("LogoMenuHide", "chevron-left", tr("Hide the menu"))

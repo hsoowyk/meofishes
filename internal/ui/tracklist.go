@@ -347,6 +347,9 @@ func (u *UI) trackMenuFor(tracks []core.Track, i int, play func([]core.Track, in
 	act(m, tr("Play next"), func() { u.PlayNext(t) })
 	act(m, tr("Add to queue"), func() { u.Enqueue(t) })
 	act(m, tr("Start radio"), func() { u.startRadio(t) })
+	if u.lt.c != nil && u.lt.room != "" && !u.lt.host {
+		act(m, tr("Suggest to the room"), func() { u.ltSuggest(t) })
+	}
 	m.AddSeparator()
 	if u.core.Library.IsLiked(t) {
 		act(m, tr("Remove from Liked songs"), func() { u.toggleLike(t) })

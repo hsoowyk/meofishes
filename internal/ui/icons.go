@@ -21,7 +21,7 @@ var IconNames = []string{"play", "pause", "next", "prev", "shuffle", "repeat", "
 	"lyrics", "queue", "home", "search", "library", "plugin", "theme", "settings", "code", "plus", "close", "note", "heart",
 	"heart-outline", "folder", "refresh", "fish", "chevron-down", "chevron-up", "chevron-left", "chevron-right", "back",
 	"more", "drag", "playlist", "export", "import", "radio", "trash", "edit", "check", "info", "fullscreen", "play-next",
-	"minimize", "maximize", "restore", "video", "download", "timer", "eq"}
+	"minimize", "maximize", "restore", "video", "download", "timer", "eq", "people"}
 
 // IconPack draws icons from an xtm plugin folder: <name>.svg or <name>.png.
 // When tint is true the icon is recolored with the theme color.

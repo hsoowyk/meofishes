@@ -33,6 +33,8 @@ func (u *UI) buildPages() *qt.QWidget {
 	u.themePg = u.buildThemesPage() // shown inside Settings
 	u.setPg = u.buildSettingsPage()
 	add("settings", tr("Settings"), u.setPg.w)
+	u.togetherPg = u.buildTogetherPage()
+	add("together", tr("Listen together"), u.togetherPg.w.QWidget)
 	u.devPg = u.buildDevPage()
 	add("dev", tr("Developer mode"), u.devPg.w)
 	return u.pages.QWidget

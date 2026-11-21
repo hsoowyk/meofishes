@@ -7,7 +7,9 @@ require (
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/dop251/goja v0.0.0-20261118204651-8dfece3d1e1d
 	github.com/godbus/dbus/v5 v5.1.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/mappu/miqt v0.15.0
+	google.golang.org/protobuf v1.36.6
 )
 
 require (

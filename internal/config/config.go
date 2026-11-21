@@ -16,7 +16,7 @@ import (
 )
 
 // Version of the app.
-const Version = "0.4.0"
+const Version = "0.5.0"
 
 // Commit is the git commit of this build (set by the CI with -ldflags
 // "-X meofishes/internal/config.Commit=…"); "dev" for local builds.
@@ -165,6 +165,9 @@ type Prefs struct {
 	// desktop integration
 	MPRIS  bool `json:"mpris"`  // media keys, desktop media widget, playerctl
 	Notify bool `json:"notify"` // a notification when a song starts
+
+	// TogetherServer is the Listen Together server ("" = Metrolist's community server).
+	TogetherServer string `json:"togetherServer,omitempty"`
 
 	// YtCookies lets yt-dlp sign in to YouTube as you: a browser name
 	// (firefox, chrome…) or "file:/path/cookies.txt"; "" = no account.

@@ -19,6 +19,7 @@ plugins**: search, playback, lyrics, covers, recommendations. The look is
 | [Process plugins](plugins/process.md) | Go (or any language) over JSON-RPC, the SDK, the player protocol |
 | [ani, dep, xtm, evt](plugins/special.md) | animation layers, libraries for plugins, icon packs, player replacement, events |
 | [Lyrics](lyrics.md) | providers, formats (TTML, LRC, KRC), sync types, animation, offset |
+| [Listen together](listen-together.md) | synced rooms with meofishes, Metrolist and SimpMusic users |
 | [Playlists and .mepw](playlists.md) | library, liked songs, the `.mepw` format |
 | [Streaming](streaming.md) | chunked downloads, prefetch, cache, the visualizer |
 | [Settings](settings.md) | every setting and where it is stored |

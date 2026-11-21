@@ -43,6 +43,11 @@
   ([cli](cli.md)).
 - **Single instance**: opening meofishes again brings the window back.
 
+## Listen together
+
+Rooms compatible with Metrolist and SimpMusic: the host controls the music,
+listeners follow in sync and suggest songs ([details](listen-together.md)).
+
 ## Look
 
 - Themes: Fishalike (default), Abyss, Sakura Paper, Ink (OLED black), Moss,
@@ -51,10 +56,7 @@
   lyrics panel, visualizer.
 - Six languages: English, Português, Français, Türkçe, Deutsch, Español.
 
-## Platforms
+## Platform
 
-Linux (x86_64) is the main platform. The code also builds for macOS and
-Windows: process handling, mpv's IPC (a named pipe on Windows), paths and the
-updater adapt to each system. Those builds are **experimental**: the CI makes
-them, but they are not tested by hand yet. On Windows the frequency
-visualizer is off and the binary needs the Qt 5 DLLs next to it.
+Linux (x86_64). The code keeps the system-specific parts separate
+(`internal/sysproc`), so other systems could be added later.
