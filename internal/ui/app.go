@@ -75,6 +75,9 @@ type UI struct {
 	eqTimer         *qt.QTimer
 	listenMs        int64 // time the current song really played (statistics)
 	lt              listenTogether
+	abA, abB        int64
+	fadeT           *qt.QTimer
+	fxTimer         *qt.QTimer
 	sb              *sponsorblock.Client
 	sbSegs          []sponsorblock.Segment
 	sbLast          int64
@@ -155,7 +158,7 @@ func Run(assets fs.FS) int {
 		return 0
 	}
 	c := app.New(assets)
-	u := &UI{core: c, cfg: c.Cfg, qIndex: -1, style: &Styler{}, nav: map[string]*NavButton{},
+	u := &UI{core: c, cfg: c.Cfg, qIndex: -1, abA: -1, abB: -1, style: &Styler{}, nav: map[string]*NavButton{},
 		pageIndex: map[string]int{}, prefetched: map[string]prefetch{}, pageTitles: map[string]string{}}
 	qt.QCoreApplication_SetApplicationName("meofishes")
 	qt.QCoreApplication_SetApplicationVersion(config.Version)
@@ -366,7 +369,7 @@ func (u *UI) toast(msg string) {
 func (u *UI) mpvOptions() player.Options {
 	pr := u.cfg.Prefs
 	o := player.Options{CacheMB: pr.CacheMB, ReadaheadSecs: pr.ReadaheadSecs, ReplayGain: pr.ReplayGain,
-		Normalize: pr.Normalize, EQ: u.eqGains(), Speed: pr.Speed, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
+		Normalize: pr.Normalize, EQ: u.eqGains(), FX: u.effects(), VinylPitch: pr.VinylPitch, Speed: pr.Speed, Device: pr.AudioDevice, Exclusive: pr.Exclusive, Volume: u.cfg.Volume,
 		Extra: strings.Fields(pr.ExtraMpvArgs), VideoFmt: u.videoFormat(), AudioFmt: plugin.QualityFormat(pr.AudioQuality)}
 	_, o.YtdlRaw = plugin.CookieArgs(pr.YtCookies)
 	if u.full != nil && u.full.video != nil {
@@ -870,6 +873,7 @@ func (u *UI) playCurrent() {
 			u.core.Plugins.Emit(plugin.EventTrackStart, map[string]any{"track": track})
 			u.notifyTrack()
 			u.sbFetch()
+			u.clearABLoop()
 			singleShot(1500, func() { u.syncMPRIS(); u.discordSync() }) // the length is known now
 			singleShot(4000, func() { u.prefetchNext(gen) })
 		})
@@ -1033,7 +1037,7 @@ func (u *UI) TogglePlay() {
 	if u.ltGuestBlocked() {
 		return
 	}
-	defer singleShot(150, u.ltPlayState)
+	defer singleShot(400, u.ltPlayState) // after the pause fade
 	if u.player == nil {
 		return
 	}
@@ -1045,7 +1049,7 @@ func (u *UI) TogglePlay() {
 		return
 	}
 	wasPaused := u.state().Paused
-	_ = u.player.TogglePause()
+	u.togglePauseFaded(wasPaused)
 	if wasPaused {
 		u.core.Plugins.Emit(plugin.EventResume, nil)
 	} else {

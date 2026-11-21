@@ -134,6 +134,13 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 		m.ExecWithPos(qt.QCursor_Pos())
 		m.DeleteLater()
 	})
+	fx := add("FullEffects", "eq", tr("Sound effects: nightcore, slowed, 8D, karaoke, ambient sound, A-B loop"), nil)
+	fx.OnClicked(func() {
+		m := qt.NewQMenu(u.win.QWidget)
+		u.effectsMenu(m)
+		m.ExecWithPos(qt.QCursor_Pos())
+		m.DeleteLater()
+	})
 	add("FullMore", "more", tr("More"), func() {
 		if cur := u.current(); cur != nil {
 			u.trackMenuFor([]core.Track{*cur}, 0, u.PlayList, nil)

@@ -166,6 +166,20 @@ type Prefs struct {
 	MPRIS  bool `json:"mpris"`  // media keys, desktop media widget, playerctl
 	Notify bool `json:"notify"` // a notification when a song starts
 
+	// Audio effects (see player.Effects). Reverb, Balance, NoiseVol are
+	// percentages; Pitch is in semitones.
+	Karaoke    bool   `json:"karaoke,omitempty"`
+	Pitch      int    `json:"pitch,omitempty"`
+	Reverb     int    `json:"reverb,omitempty"`
+	Balance    int    `json:"balance,omitempty"`
+	Mono       bool   `json:"mono,omitempty"`
+	Spatial    bool   `json:"spatial,omitempty"`
+	Crossfeed  bool   `json:"crossfeed,omitempty"`
+	Noise      string `json:"noise,omitempty"`
+	NoiseVol   int    `json:"noiseVol,omitempty"`
+	VinylPitch bool   `json:"vinylPitch,omitempty"` // the pitch follows the speed
+	FadePause  bool   `json:"fadePause"`            // fade on play / pause
+
 	// SponsorBlock skips non-music parts of YouTube videos (SponsorCats:
 	// comma-separated categories, "" = default set).
 	SponsorBlock bool   `json:"sponsorBlock"`
@@ -247,7 +261,7 @@ func DefaultPrefs() Prefs {
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
 		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true,
-		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true, SponsorBlock: true,
+		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true, SponsorBlock: true, FadePause: true, NoiseVol: 30,
 	}
 }
 

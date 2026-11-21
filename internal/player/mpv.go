@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"meofishes/internal/sysproc"
 	"net"
 	"os"
@@ -52,13 +53,15 @@ type Options struct {
 	Extra         []string // extra mpv arguments
 	// Wid is the native window video is drawn into (0 = no video support).
 	// Video stays off (vid=no) until SetVideo turns it on.
-	AudioFmt string    // yt-dlp format for audio (quality setting)
-	YtdlRaw  string    // --ytdl-raw-options (cookies for YouTube)
-	EQ       []float64 // equalizer gains (dB) for EQBands; nil = off
-	Speed    float64   // playback speed (1 = normal; pitch is kept)
-	Wid      uintptr
-	X11Video bool   // the app runs on X11/XWayland: use an X11 GPU context
-	VideoFmt string // yt-dlp format used while video is on
+	AudioFmt   string    // yt-dlp format for audio (quality setting)
+	YtdlRaw    string    // --ytdl-raw-options (cookies for YouTube)
+	EQ         []float64 // equalizer gains (dB) for EQBands; nil = off
+	Speed      float64   // playback speed (1 = normal; pitch is kept)
+	FX         Effects   // audio effects
+	VinylPitch bool      // the pitch follows the speed (nightcore / slowed)
+	Wid        uintptr
+	X11Video   bool   // the app runs on X11/XWayland: use an X11 GPU context
+	VideoFmt   string // yt-dlp format used while video is on
 }
 
 // Events from the player (called from a background goroutine).
@@ -131,8 +134,11 @@ func Start(runtimeDir string, opt Options, ev Events) (*MPV, error) {
 			args = append(args, "--gpu-context=x11egl")
 		}
 	}
-	if af := Filters(opt.Normalize, opt.EQ); af != "" {
+	if af := Filters(opt.Normalize, opt.EQ, opt.FX); af != "" {
 		args = append(args, "--af="+af)
+	}
+	if opt.VinylPitch {
+		args = append(args, "--audio-pitch-correction=no")
 	}
 	if opt.YtdlRaw != "" {
 		args = append(args, "--ytdl-raw-options="+opt.YtdlRaw)
@@ -327,12 +333,29 @@ var EQPresets = map[string][]float64{
 	"loudness":   {5, 4, 2, 0, -1, 0, 0, 2, 4, 5},
 }
 
-// Filters builds mpv's audio filter chain: loudness normalization and a
-// 10-band equalizer (with a pre-amp so boosts do not clip).
-func Filters(normalize bool, eq []float64) string {
-	var parts []string
+// Effects are the extra audio effects.
+type Effects struct {
+	Karaoke   bool    // remove the voice (center of the stereo image)
+	Pitch     float64 // semitones, -12..12, independent of the speed
+	Reverb    float64 // 0..1
+	Balance   float64 // -1 (left) .. 1 (right)
+	Mono      bool
+	Spatial   bool    // "8D": the sound turns around the head
+	Crossfeed bool    // softer stereo for headphones
+	Noise     string  // ambient noise: "", "white", "pink", "brown"
+	NoiseVol  float64 // 0..1
+}
+
+func clampF(v, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, v)) }
+
+// Filters builds mpv's audio filter chain: loudness normalization, a
+// 10-band equalizer (with a pre-amp so boosts do not clip) and the effects.
+// Everything goes in ONE lavfi graph, with rubberband (pitch) after it:
+// mpv stalls with rubberband before several separate lavfi filters.
+func Filters(normalize bool, eq []float64, fx Effects) string {
+	var chain []string
 	if normalize {
-		parts = append(parts, "lavfi=[dynaudnorm=f=250:g=15]")
+		chain = append(chain, "dynaudnorm=f=250:g=15")
 	}
 	if len(eq) == len(EQBands) {
 		var bands []string
@@ -345,12 +368,46 @@ func Filters(normalize bool, eq []float64) string {
 				bands = append(bands, fmt.Sprintf("equalizer=f=%d:t=o:w=1:g=%g", EQBands[i], g))
 			}
 		}
-		if len(bands) > 0 {
-			if peak > 0 {
-				bands = append([]string{fmt.Sprintf("volume=volume=%gdB", -peak)}, bands...)
-			}
-			parts = append(parts, "lavfi=["+strings.Join(bands, ",")+"]")
+		if len(bands) > 0 && peak > 0 {
+			chain = append(chain, fmt.Sprintf("volume=volume=%gdB", -peak))
 		}
+		chain = append(chain, bands...)
+	}
+	if fx.Karaoke {
+		chain = append(chain, "pan=stereo|c0=c0-c1|c1=c1-c0")
+	}
+	if fx.Mono {
+		chain = append(chain, "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1")
+	}
+	if fx.Balance != 0 {
+		chain = append(chain, fmt.Sprintf("stereotools=balance_out=%.2f", clampF(fx.Balance, -1, 1)))
+	}
+	if fx.Reverb > 0 {
+		r := clampF(fx.Reverb, 0, 1)
+		chain = append(chain, fmt.Sprintf("aecho=0.8:%.2f:60|120|190|260:%.2f|%.2f|%.2f|%.2f",
+			0.6+0.3*r, 0.45*r, 0.32*r, 0.22*r, 0.14*r))
+	}
+	if fx.Spatial {
+		chain = append(chain, "apulsator=hz=0.125:amount=0.85")
+	}
+	if fx.Crossfeed {
+		chain = append(chain, "crossfeed=strength=0.4")
+	}
+	graph := strings.Join(chain, ",")
+	switch fx.Noise {
+	case "white", "pink", "brown":
+		a := 0.02 + 0.18*clampF(fx.NoiseVol, 0, 1)
+		if graph == "" {
+			graph = "anull"
+		}
+		graph += fmt.Sprintf("[x];anoisesrc=c=%s:a=%.3f:r=48000[n];[x][n]amix=inputs=2:duration=first:normalize=0", fx.Noise, a)
+	}
+	var parts []string
+	if graph != "" {
+		parts = append(parts, "lavfi=["+graph+"]")
+	}
+	if fx.Pitch != 0 {
+		parts = append(parts, fmt.Sprintf("rubberband=pitch-scale=%.4f", math.Pow(2, clampF(fx.Pitch, -12, 12)/12)))
 	}
 	return strings.Join(parts, ",")
 }
@@ -360,6 +417,23 @@ func (m *MPV) SetFilters(af string) error { return m.command("set_property", "af
 
 // SetSpeed changes the playback speed (pitch is kept).
 func (m *MPV) SetSpeed(s float64) error { return m.command("set_property", "speed", s) }
+
+// SetVinylPitch makes the pitch follow the speed (nightcore / slowed).
+func (m *MPV) SetVinylPitch(on bool) error {
+	return m.command("set_property", "audio-pitch-correction", !on)
+}
+
+// SetABLoop repeats the part between a and b (seconds); a < 0 clears it.
+func (m *MPV) SetABLoop(a, b float64) error {
+	if a < 0 {
+		_ = m.command("set_property", "ab-loop-b", "no")
+		return m.command("set_property", "ab-loop-a", "no")
+	}
+	if err := m.command("set_property", "ab-loop-a", a); err != nil {
+		return err
+	}
+	return m.command("set_property", "ab-loop-b", b)
+}
 
 // SetVideo turns video on (in the window given to Start) or off. format is
 // the yt-dlp format for web pages while video is on.

@@ -596,11 +596,37 @@ func (sp *settingsPage) playback(s *sb) {
 	s.choice(tr("Volume normalization (ReplayGain)"), "", [][2]string{{"no", tr("Off")}, {"track", tr("Per song")}, {"album", tr("Per album")}},
 		u.cfg.Prefs.ReplayGain, func(v string) { u.cfg.Prefs.ReplayGain = v; u.restartPlayer() })
 	s.toggle(tr("Even out loudness"), tr("Dynamic normalization: quiet and loud songs sound alike."), u.cfg.Prefs.Normalize, func(on bool) { u.cfg.Prefs.Normalize = on; u.applyFilters() })
-	s.choice(tr("Speed"), tr("Pitch is kept."), [][2]string{{"0.5", "0.5×"}, {"0.75", "0.75×"}, {"0.9", "0.9×"}, {"1", "1×"}, {"1.1", "1.1×"}, {"1.25", "1.25×"}, {"1.5", "1.5×"}, {"2", "2×"}},
+	s.choice(tr("Speed"), "", [][2]string{{"0.5", "0.5×"}, {"0.75", "0.75×"}, {"0.9", "0.9×"}, {"1", "1×"}, {"1.1", "1.1×"}, {"1.25", "1.25×"}, {"1.5", "1.5×"}, {"2", "2×"}},
 		strconv.FormatFloat(u.cfg.Prefs.Speed, 'f', -1, 64), func(v string) {
 			f, _ := strconv.ParseFloat(v, 64)
 			u.setSpeed(f)
 		})
+
+	s.section(tr("Effects"))
+	s.toggle(tr("Fade on play and pause"), "", u.cfg.Prefs.FadePause, func(on bool) { u.cfg.Prefs.FadePause = on })
+	modes := [][2]string{{"", tr("Custom")}}
+	for _, m := range soundModes() {
+		modes = append(modes, [2]string{m.id, m.name})
+	}
+	s.choice(tr("Sound mode"), tr("Also in the fullscreen player (equalizer button)."), modes, u.currentMode(), func(v string) {
+		for _, m := range soundModes() {
+			if m.id == v {
+				u.setMode(m)
+			}
+		}
+		s.refresh()
+	})
+	s.toggle(tr("Pitch follows the speed"), tr("Like a record player: faster is higher (nightcore), slower is deeper."), u.cfg.Prefs.VinylPitch, func(on bool) { u.cfg.Prefs.VinylPitch = on; u.applyFilters() })
+	s.number(tr("Pitch"), tr("Without changing the speed (needs mpv with rubberband)."), -12, 12, u.cfg.Prefs.Pitch, tr("semitones"), func(v int) { u.cfg.Prefs.Pitch = v; u.applyFiltersSoon() })
+	s.number(tr("Reverb"), "", 0, 100, u.cfg.Prefs.Reverb, "%", func(v int) { u.cfg.Prefs.Reverb = v; u.applyFiltersSoon() })
+	s.toggle(tr("Karaoke"), tr("Removes the voice when it is in the center of the mix (works on most songs)."), u.cfg.Prefs.Karaoke, func(on bool) { u.cfg.Prefs.Karaoke = on; u.applyFilters() })
+	s.toggle(tr("8D sound"), tr("The sound slowly turns around your head — use headphones."), u.cfg.Prefs.Spatial, func(on bool) { u.cfg.Prefs.Spatial = on; u.applyFilters() })
+	s.toggle(tr("Headphone crossfeed"), tr("Mixes a little of each side into the other: less tiring stereo."), u.cfg.Prefs.Crossfeed, func(on bool) { u.cfg.Prefs.Crossfeed = on; u.applyFilters() })
+	s.toggle(tr("Mono"), "", u.cfg.Prefs.Mono, func(on bool) { u.cfg.Prefs.Mono = on; u.applyFilters() })
+	s.number(tr("Balance"), tr("Negative = left, positive = right."), -100, 100, u.cfg.Prefs.Balance, "%", func(v int) { u.cfg.Prefs.Balance = v; u.applyFiltersSoon() })
+	s.choice(tr("Ambient sound"), tr("Mixed under the music."), [][2]string{{"", tr("None")}, {"brown", tr("Rain (brown noise)")}, {"pink", tr("Wind (pink noise)")}, {"white", tr("White noise")}},
+		u.cfg.Prefs.Noise, func(v string) { u.cfg.Prefs.Noise = v; u.applyFilters() })
+	s.number(tr("Ambient sound volume"), "", 0, 100, u.cfg.Prefs.NoiseVol, "%", func(v int) { u.cfg.Prefs.NoiseVol = v; u.applyFiltersSoon() })
 
 	s.section(tr("Equalizer"))
 	s.toggle(tr("Equalizer"), "", u.cfg.Prefs.EQOn, func(on bool) { u.cfg.Prefs.EQOn = on; u.applyFilters() })

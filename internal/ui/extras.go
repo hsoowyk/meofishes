@@ -35,9 +35,11 @@ func (u *UI) applyFilters() {
 	if u.mpv == nil {
 		return
 	}
-	if err := u.mpv.SetFilters(player.Filters(u.cfg.Prefs.Normalize, u.eqGains())); err != nil {
+	if err := u.mpv.SetFilters(player.Filters(u.cfg.Prefs.Normalize, u.eqGains(), u.effects())); err != nil {
 		u.toast(tr("The equalizer could not be applied: {error}", "error", err.Error()))
 	}
+	_ = u.mpv.SetVinylPitch(u.cfg.Prefs.VinylPitch)
+	_ = u.cfg.Save()
 }
 
 // setSpeed changes the playback speed (0.25–4, pitch kept).

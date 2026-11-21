@@ -9,6 +9,15 @@
   Treble, Vocal, Rock, Pop, Electronic, Acoustic, Loudness) or your own curve;
   a pre-amp keeps boosts from clipping. Applied live.
 - **Speed** 0.5× – 2× (pitch kept), also `meofishes speed 1.25`.
+- **Sound modes**: Nightcore, Slowed + reverb, 8D, Karaoke (removes the
+  voice) — from the equalizer button of the fullscreen player or Settings.
+- **Effects**: pitch without changing the speed (mpv with rubberband),
+  "pitch follows the speed" (record player), reverb, headphone crossfeed,
+  mono, balance, and an **ambient sound** under the music (rain, wind,
+  white noise) with its own volume.
+- **A-B loop**: repeat a part of a song (effects menu → Loop from here /
+  until here).
+- **Fade on play and pause** (can be turned off).
 - **Loudness**: ReplayGain and dynamic normalization.
 - **Sleep timer**: 5–90 minutes or the end of the song; the volume fades out
   for the last 15 s, then playback pauses. In the fullscreen player bar, the
