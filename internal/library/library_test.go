@@ -2,6 +2,7 @@ package library
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -76,5 +77,53 @@ func TestStatsAndSearches(t *testing.T) {
 	l.AddSearch("DAFT PUNK")
 	if s := l.RecentSearches(); len(s) != 2 || s[0] != "DAFT PUNK" {
 		t.Fatalf("searches %v", s)
+	}
+}
+
+func TestSmart(t *testing.T) {
+	l := Open(filepath.Join(t.TempDir(), "lib.json"))
+	a := core.Track{Source: "x", ID: "1", Title: "Song (Official Video)", Artist: "Ana, Bia"}
+	b := core.Track{Source: "y", ID: "2", Title: "Song", Artist: "Ana"}
+	c := core.Track{Source: "x", ID: "3", Title: "Other", Artist: "Caio"}
+	if SongKey(a) != SongKey(b) {
+		t.Fatalf("keys %q %q", SongKey(a), SongKey(b))
+	}
+	l.SetHidden(a, true)
+	if !l.IsHidden(b) || !l.Unwanted(b) || l.IsHidden(c) {
+		t.Fatal("hidden")
+	}
+	l.SetHidden(a, false)
+	if l.IsHidden(b) {
+		t.Fatal("unhide")
+	}
+	for i := 0; i < 3; i++ {
+		l.RecordSkip(c)
+	}
+	if !l.Unwanted(c) || len(l.SmartTracks(SmartSkipped)) != 1 {
+		t.Fatal("skips")
+	}
+	l.SetRating(b, 5)
+	if l.Rating(a) != 5 || len(l.SmartTracks(SmartTopRated)) != 1 {
+		t.Fatal("rating")
+	}
+	p := l.Create("p", a, c, b)
+	if n := l.RemoveDuplicates(p.ID); n != 1 || len(l.Get(p.ID).Tracks) != 2 {
+		t.Fatalf("dupes %d", n)
+	}
+	q := l.Create("q", c, core.Track{Source: "z", ID: "9", Title: "New", Artist: "Duda"})
+	if m := l.Merge("m", p.ID, q.ID); len(m.Tracks) != 3 {
+		t.Fatalf("merge %d", len(m.Tracks))
+	}
+	ts := []core.Track{}
+	for i := 0; i < 6; i++ {
+		ts = append(ts, core.Track{ID: fmt.Sprint(i), Title: fmt.Sprint("t", i), Artist: map[bool]string{true: "A", false: "B"}[i < 3]})
+	}
+	for k := 0; k < 50; k++ {
+		SmartShuffle(ts)
+		for i := 1; i < len(ts); i++ {
+			if ts[i].Artist == ts[i-1].Artist {
+				t.Fatalf("same artist twice: %v", ts)
+			}
+		}
 	}
 }

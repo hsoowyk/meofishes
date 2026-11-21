@@ -75,10 +75,12 @@ type HistoryItem struct {
 type Library struct {
 	path      string
 	mu        sync.Mutex
-	Playlists []*Playlist          `json:"playlists"`
-	History   []HistoryItem        `json:"history,omitempty"`
-	Stats     map[string]*PlayStat `json:"stats,omitempty"`
-	Searches  []string             `json:"searches,omitempty"`
+	Playlists []*Playlist           `json:"playlists"`
+	History   []HistoryItem         `json:"history,omitempty"`
+	Stats     map[string]*PlayStat  `json:"stats,omitempty"`
+	Searches  []string              `json:"searches,omitempty"`
+	Hidden    map[string]core.Track `json:"hidden,omitempty"`  // songs never played by autoplay, radio or shuffle mixes
+	Ratings   map[string]int        `json:"ratings,omitempty"` // 1–5 stars
 	// KeepHistory=false pauses the history (privacy setting).
 	KeepHistory bool `json:"-"`
 	listeners   []func()
@@ -367,6 +369,7 @@ func (l *Library) ClearHistory() {
 type PlayStat struct {
 	Track core.Track `json:"track"`
 	Plays int        `json:"plays"`
+	Skips int        `json:"skips,omitempty"`
 	Ms    int64      `json:"ms"`
 	Last  time.Time  `json:"last"`
 }

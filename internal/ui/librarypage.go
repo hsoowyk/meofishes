@@ -53,11 +53,26 @@ func (u *UI) buildLibrary() *libraryPage {
 	link.OnClicked(u.importFromLink)
 	dls := qt.NewQPushButton3(tr("Downloaded songs"))
 	dls.OnClicked(func() { u.openPlaylist(downloadsID) })
-	for _, x := range []*qt.QPushButton{newp, imp, link, exp, dls} {
+	surprise := qt.NewQPushButton3(tr("Surprise me"))
+	surprise.SetToolTip(tr("A mix of your liked, most played, best rated and forgotten songs"))
+	surprise.OnClicked(u.surpriseMe)
+	for _, x := range []*qt.QPushButton{newp, surprise, imp, link, exp, dls} {
 		row.AddWidget(x.QWidget)
 	}
 	row.AddStretch()
 	b.AddLayout(row.QLayout)
+	smart := qt.NewQHBoxLayout2()
+	smart.SetSpacing(6)
+	smart.AddWidget(label(tr("Smart lists:"), "", "hint").QWidget)
+	for _, sl := range smartLists() {
+		id := sl[0]
+		x := qt.NewQPushButton3(sl[1])
+		role(x.QWidget, "chip-button")
+		x.OnClicked(func() { u.openPlaylist(id) })
+		smart.AddWidget(x.QWidget)
+	}
+	smart.AddStretch()
+	b.AddLayout(smart.QLayout)
 	b.AddSpacing(8)
 	gw := qt.NewQWidget2()
 	lp.grid = qt.NewQGridLayout(gw)
@@ -345,6 +360,8 @@ func (lp *libraryPage) fillDetail() {
 	p := u.core.Library.Get(lp.openID)
 	if lp.openID == downloadsID {
 		p = lp.downloadsPlaylist()
+	} else if strings.HasPrefix(lp.openID, "smart:") {
+		p = lp.smartPlaylist(lp.openID)
 	}
 	if p == nil {
 		lp.openID = ""
@@ -398,6 +415,8 @@ func (lp *libraryPage) fillDetail() {
 	btn(tr("Download all"), false, func() { u.downloadTracks(tracks) })
 	if id == downloadsID {
 		btn(tr("Open folder"), false, func() { u.openFolder(u.core.DownloadDir()) })
+	} else if isVirtual(id) {
+		btn(tr("Save as playlist"), false, func() { u.newPlaylistDialog(tracks) })
 	} else {
 		btn(tr("Export…"), false, func() {
 			if pl := u.core.Library.Get(id); pl != nil {
@@ -412,14 +431,14 @@ func (lp *libraryPage) fillDetail() {
 			}
 		})
 	}
-	if id != downloadsID {
+	if !isVirtual(id) {
 		more := u.iconButton("PlaylistMore", "more", tr("More"))
 		more.OnClicked(func() { u.playlistMenu(id) })
 		lp.dActions.AddWidget(more.QWidget)
 	}
 	lp.dActions.AddStretch()
 
-	editable := p.Kind != library.KindRemote && id != downloadsID
+	editable := p.Kind != library.KindRemote && !isVirtual(id)
 	lp.dList.Reorderable = editable
 	lp.dList.OnMove = nil
 	lp.dList.OnRemove = nil
@@ -452,6 +471,26 @@ func (u *UI) playlistMenu(id string) {
 		u.toast(plural(len(p.Tracks), "{n} song added to the queue", "{n} songs added to the queue"))
 	})
 	add(tr("Export…"), func() { u.exportPlaylists(p) })
+	add(tr("Remove repeated songs"), func() {
+		n := u.core.Library.RemoveDuplicates(id)
+		u.toast(plural(n, "{n} repeated song removed", "{n} repeated songs removed"))
+	})
+	merge := m.AddMenuWithTitle(tr("Merge with"))
+	for _, o := range u.core.Library.All() {
+		if o.ID == id {
+			continue
+		}
+		oid, oname := o.ID, o.Name
+		if oid == library.LikedID {
+			oname = tr("Liked songs")
+		}
+		a := merge.AddAction(oname)
+		a.OnTriggered(func() {
+			name := p.Name + " + " + oname
+			np := u.core.Library.Merge(name, id, oid)
+			u.toast(tr("Created {playlist} ({n} songs)", "playlist", name, "n", itoa(len(np.Tracks))))
+		})
+	}
 	if id != library.LikedID {
 		m.AddSeparator()
 		add(tr("Rename…"), func() {
@@ -560,4 +599,44 @@ func safeName(s string) string {
 		}
 		return r
 	}, s)
+}
+
+func isVirtual(id string) bool { return id == downloadsID || strings.HasPrefix(id, "smart:") }
+
+func smartLists() [][2]string {
+	return [][2]string{
+		{library.SmartTopRated, tr("Best rated")},
+		{library.SmartMostPlay, tr("Most played")},
+		{library.SmartForgotten, tr("Forgotten favorites")},
+		{library.SmartSkipped, tr("Often skipped")},
+		{library.SmartHidden, tr("Hidden songs")},
+	}
+}
+
+func (lp *libraryPage) smartPlaylist(id string) *library.Playlist {
+	p := &library.Playlist{ID: id, Kind: "smart", Tracks: lp.u.core.Library.SmartTracks(id)}
+	for _, sl := range smartLists() {
+		if sl[0] == id {
+			p.Name = sl[1]
+		}
+	}
+	p.Description = map[string]string{
+		library.SmartTopRated:  tr("Songs you gave 4 or 5 stars."),
+		library.SmartMostPlay:  tr("What you listen to the most."),
+		library.SmartForgotten: tr("Liked or often played, but not in the last 30 days."),
+		library.SmartSkipped:   tr("Songs you skip in the first seconds — autoplay avoids them."),
+		library.SmartHidden:    tr("Never played by autoplay, radio or mixes. Right-click → Show again."),
+	}[id]
+	return p
+}
+
+// surpriseMe plays a mix from the library.
+func (u *UI) surpriseMe() {
+	ts := u.core.Library.Surprise(60)
+	if len(ts) == 0 {
+		u.toast(tr("Like or rate a few songs first — the mix is made from them"))
+		return
+	}
+	u.PlayList(ts, 0)
+	u.toast(tr("Surprise mix: {n} songs", "n", itoa(len(ts))))
 }

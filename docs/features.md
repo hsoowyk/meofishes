@@ -42,6 +42,20 @@
   after 30 s or half the song). Kept on your computer; cleared with the
   history.
 - **Recent searches** under the search box.
+- **Ratings**: 1–5 stars (right-click a song → Rate).
+- **Hide a song**: autoplay, radio and mixes never play it again (also the
+  same song from another source); "Hidden songs" lists them to bring back.
+- **Skip tracker**: songs you skip in the first 30 s are counted; autoplay
+  and radio leave out the ones you skip much more than you play.
+- **Smart shuffle**: the same artist does not play twice in a row when it
+  can be avoided.
+- **Smart lists**: Best rated, Most played, Forgotten favorites (not
+  played for 30 days), Often skipped, Hidden songs — each can be saved as
+  a playlist.
+- **Surprise me** (Library): a mix of liked, most played, best rated and
+  forgotten songs, without what you played recently.
+- **Playlist tools**: remove repeated songs (also the same song from two
+  sources), merge two playlists into a new one.
 - **Search by lyrics**: pick "By a line of the lyrics" next to the search box
   and type a line you remember (Genius' lyric search; the songs play from
   YouTube).

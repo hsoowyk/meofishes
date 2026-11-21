@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt"
 
@@ -351,6 +352,26 @@ func (u *UI) trackMenuFor(tracks []core.Track, i int, play func([]core.Track, in
 		act(m, tr("Suggest to the room"), func() { u.ltSuggest(t) })
 	}
 	m.AddSeparator()
+	rate := m.AddMenuWithTitle(tr("Rate"))
+	cur := u.core.Library.Rating(t)
+	for n := 5; n >= 1; n-- {
+		n := n
+		a := rate.AddAction(strings.Repeat("★", n) + strings.Repeat("☆", 5-n))
+		a.SetCheckable(true)
+		a.SetChecked(cur == n)
+		a.OnTriggered(func() { u.core.Library.SetRating(t, n) })
+	}
+	if cur > 0 {
+		act(rate, tr("Remove rating"), func() { u.core.Library.SetRating(t, 0) })
+	}
+	if u.core.Library.IsHidden(t) {
+		act(m, tr("Show again"), func() { u.core.Library.SetHidden(t, false); u.toast(tr("The song can play in mixes again")) })
+	} else {
+		act(m, tr("Hide this song"), func() {
+			u.core.Library.SetHidden(t, true)
+			u.toast(tr("Hidden: autoplay, radio and mixes won't play it"))
+		})
+	}
 	if u.core.Library.IsLiked(t) {
 		act(m, tr("Remove from Liked songs"), func() { u.toggleLike(t) })
 	} else {

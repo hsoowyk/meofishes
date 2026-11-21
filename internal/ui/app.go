@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -634,8 +633,7 @@ func (u *UI) shuffleRest() {
 	if u.qIndex+1 >= len(u.queue) {
 		return
 	}
-	rest := u.queue[u.qIndex+1:]
-	rand.Shuffle(len(rest), func(i, j int) { rest[i], rest[j] = rest[j], rest[i] })
+	library.SmartShuffle(u.queue[u.qIndex+1:])
 }
 
 func (u *UI) saveQueue() {
@@ -929,6 +927,9 @@ func (u *UI) Next(manual bool) {
 		return
 	}
 	if manual {
+		if cur := u.current(); cur != nil && u.listenMs < 30000 && !u.lt.applying {
+			u.core.Library.RecordSkip(*cur)
+		}
 		u.emitEnd()
 	}
 	if u.qIndex+1 >= len(u.queue) {
@@ -985,7 +986,7 @@ func (u *UI) startRadio(t core.Track) {
 			return err
 		}
 		mainthread.Start(func() {
-			u.PlayList(append([]core.Track{t}, ts...), 0)
+			u.PlayList(append([]core.Track{t}, u.wanted(ts)...), 0)
 			u.core.Log("radio", "%d tracks from %s", len(ts), via)
 		})
 		return nil
@@ -1002,7 +1003,7 @@ func (u *UI) addRecommendations(ts []core.Track, via string, play bool) {
 		have[t.Key()] = true
 	}
 	n := 0
-	for _, t := range ts {
+	for _, t := range u.wanted(ts) {
 		if !have[t.Key()] {
 			u.queue = append(u.queue, t)
 			have[t.Key()] = true
@@ -1472,4 +1473,15 @@ func (u *UI) checkUpdate(manual bool) {
 			}
 		})
 	})
+}
+
+// wanted drops hidden and often-skipped songs from recommendations.
+func (u *UI) wanted(ts []core.Track) []core.Track {
+	out := ts[:0:0]
+	for _, t := range ts {
+		if !u.core.Library.Unwanted(t) {
+			out = append(out, t)
+		}
+	}
+	return out
 }
