@@ -26,7 +26,7 @@ func TestCoreFirstRun(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", id, err)
 		}
-		if !strings.Contains(comp.QSS, "#MiniPlayer") || !strings.Contains(comp.QSS, `role="badge"`) || strings.Contains(comp.QSS, "alpha(") {
+		if !strings.Contains(comp.QSS, "#MiniPlayer") || comp.Props["#VideoLyric"]["font-size"] == "" || !strings.Contains(comp.QSS, `role="badge"`) || strings.Contains(comp.QSS, "alpha(") {
 			t.Fatalf("%s: mini player / badge rules missing or not resolved", id)
 		}
 		if !strings.Contains(comp.QSS, "#LeftPanel") || comp.Props["#FullLyrics"]["font-size"] == "" {

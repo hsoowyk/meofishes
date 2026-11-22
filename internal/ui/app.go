@@ -61,7 +61,10 @@ type UI struct {
 	stream          *plugin.Stream // what is playing (developer mode)
 	streamFrom      string         // original URL before the proxy
 	streamTrack     core.Track
-	videoOn         bool
+	videoOn         bool // the user wants the video
+	videoShown      bool // mpv is really showing video frames
+	videoLoading    bool
+	videoGen        int
 	lastVol         float64
 	tray            *qt.QSystemTrayIcon
 	trayNow         *qt.QAction
@@ -76,6 +79,11 @@ type UI struct {
 	lt              listenTogether
 	abA, abB        int64
 	fadeT           *qt.QTimer
+	warmTimer       *qt.QTimer
+	warmCand        core.Track
+	warmNext        *core.Track
+	warmBusy        bool
+	warmed          map[string]time.Time
 	mini            *miniPlayer
 	techBusy        bool
 	techTick        int
@@ -161,7 +169,7 @@ func Run(assets fs.FS) int {
 		return 0
 	}
 	c := app.New(assets)
-	u := &UI{core: c, cfg: c.Cfg, qIndex: -1, abA: -1, abB: -1, style: &Styler{}, nav: map[string]*NavButton{},
+	u := &UI{core: c, cfg: c.Cfg, qIndex: -1, abA: -1, abB: -1, warmed: map[string]time.Time{}, style: &Styler{}, nav: map[string]*NavButton{},
 		pageIndex: map[string]int{}, prefetched: map[string]prefetch{}, pageTitles: map[string]string{}}
 	qt.QCoreApplication_SetApplicationName("meofishes")
 	qt.QCoreApplication_SetApplicationVersion(config.Version)
@@ -724,6 +732,7 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 		(strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://")) {
 		out.URL = u.core.Proxy.Register(out.URL, out.Headers)
 		out.Headers = nil
+		u.core.Proxy.Prefetch(out.URL) // the first part downloads while mpv is still opening
 	}
 	return &out, from, nil
 }
@@ -731,23 +740,16 @@ func (u *UI) localize(ctx context.Context, t core.Track, st *plugin.Stream) (*pl
 var errYouTubeSignIn = errors.New("YouTube asks to sign in")
 
 // prepare resolves a track (using the prefetched stream when there is one).
-func (u *UI) prepare(ctx context.Context, t core.Track, video bool) (*plugin.Stream, string, error) {
-	if !video {
-		if path, ok := u.core.Offline.Lookup(t); ok {
-			return &plugin.Stream{URL: path, Via: "offline"}, path, nil
-		}
-		if p, ok := u.takePrefetch(t.Key()); ok {
-			return p.st, p.from, nil
-		}
+func (u *UI) prepare(ctx context.Context, t core.Track) (*plugin.Stream, string, error) {
+	if path, ok := u.core.Offline.Lookup(t); ok {
+		return &plugin.Stream{URL: path, Via: "offline"}, path, nil
+	}
+	if p, ok := u.takePrefetch(t.Key()); ok {
+		return p.st, p.from, nil
 	}
 	st, err := u.core.Plugins.Resolve(ctx, t)
 	if err != nil {
 		return nil, "", err
-	}
-	if video && st.Page { // mpv opens the page itself, with video
-		out := *st
-		out.PageURL = st.URL
-		return &out, st.URL, nil
 	}
 	return u.localize(ctx, t, st)
 }
@@ -818,12 +820,18 @@ func (u *UI) playCurrent() {
 		_ = u.player.Stop() // the previous song stops now, not when the next one is ready
 	}
 	track := *t
-	if u.cfg.Prefs.VideoAuto && track.VideoID != "" && u.mpv != nil && !u.videoOn {
+	if u.cfg.Prefs.VideoAuto && track.VideoID != "" && u.mpv != nil && !u.mpv.NoVideo {
 		u.videoOn = true
-		_ = u.mpv.SetVideo(true, u.videoFormat())
+	}
+	u.videoShown = false // the new song's video is not there yet
+	u.videoGen++         // drop a video still loading for the previous song
+	u.videoLoading = false
+	if u.mpv != nil {
+		_ = u.mpv.SetVideo(false, "") // audio only until the new video is ready
+	}
+	if u.full != nil {
 		u.full.syncVideo()
 	}
-	video := u.videoOn
 	u.showNowPlaying(track)
 	u.stream = nil
 	u.lyricsSearching = true
@@ -836,7 +844,7 @@ func (u *UI) playCurrent() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		t0 := time.Now()
-		st, from, err := u.prepare(ctx, track, video)
+		st, from, err := u.prepare(ctx, track)
 		mainthread.Start(func() {
 			if gen != u.gen {
 				return
@@ -860,6 +868,9 @@ func (u *UI) playCurrent() {
 				return
 			}
 			u.stream, u.streamFrom, u.streamTrack = st, from, track
+			if u.videoOn {
+				u.loadVideo(gen) // the music is already playing; the video joins it when ready
+			}
 			if u.lt.host {
 				singleShot(600, u.ltSendCurrent) // the room follows the host
 			}
@@ -881,7 +892,7 @@ func (u *UI) playCurrent() {
 			u.sbFetch()
 			u.clearABLoop()
 			singleShot(1500, func() { u.syncMPRIS(); u.discordSync() }) // the length is known now
-			singleShot(4000, func() { u.prefetchNext(gen) })
+			singleShot(1500, func() { u.prefetchNext(gen) })
 		})
 		// lyrics: wait for the duration if the source did not know it
 		if track.DurationMs == 0 && u.player != nil {
@@ -1406,8 +1417,9 @@ func (u *UI) videoFormat() string {
 	return fmt.Sprintf("bestvideo[height<=?%d]+bestaudio/best[height<=?%d]/best", h, h)
 }
 
-// setVideo turns the video of the current song on or off. Turning it on
-// reloads the song as video at the same position.
+// setVideo turns the video of the current song on or off. The music never
+// stops: the video stream is added to what is playing, and the video area
+// only appears once mpv really shows frames.
 func (u *UI) setVideo(on bool) {
 	if u.mpv == nil {
 		u.toast(tr("Video needs mpv as the player"))
@@ -1418,12 +1430,83 @@ func (u *UI) setVideo(on bool) {
 		return
 	}
 	u.videoOn = on
-	_ = u.mpv.SetVideo(on, u.videoFormat())
-	u.full.syncVideo()
-	if cur := u.current(); cur != nil && !u.state().Idle {
-		u.restorePos = u.state().PositionMs
-		u.playCurrent()
+	if !on {
+		u.videoGen++ // a video still loading is dropped
+		u.videoShown = false
+		_ = u.mpv.RemoveVideo()
+		u.full.syncVideo()
+		return
 	}
+	u.full.syncVideo()
+	if !u.state().Idle {
+		u.loadVideo(u.gen)
+	}
+}
+
+// pageOf is the web page of the current song (where its video is).
+func (u *UI) pageOf(t core.Track) string {
+	if u.stream != nil && u.stream.PageURL != "" {
+		return u.stream.PageURL
+	}
+	if id := ytID(t, ""); id != "" {
+		return "https://www.youtube.com/watch?v=" + id
+	}
+	return ""
+}
+
+// loadVideo finds the video stream of the song playing and adds it; the
+// video area is shown when mpv confirms frames are playing.
+func (u *UI) loadVideo(gen int) {
+	cur := u.current()
+	if cur == nil || u.mpv == nil {
+		return
+	}
+	page := u.pageOf(*cur)
+	if page == "" || plugin.YtdlpPath() == "" {
+		u.toast(tr("This song has no video"))
+		u.videoOn = false
+		u.full.syncVideo()
+		return
+	}
+	u.videoGen++
+	vgen := u.videoGen
+	u.videoLoading = true
+	u.full.syncVideo()
+	height := u.cfg.Prefs.VideoQuality
+	m := u.mpv
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		url, err := plugin.YtdlpVideoURL(ctx, page, height)
+		if err == nil {
+			err = m.AddVideo(url)
+		}
+		ok := false
+		for i := 0; err == nil && i < 120 && !ok; i++ { // up to 30 s for the first frames
+			time.Sleep(250 * time.Millisecond)
+			if !mainthread.Wait2(func() bool { return vgen == u.videoGen && gen == u.gen }) {
+				return
+			}
+			ok = m.VideoPlaying()
+		}
+		mainthread.Start(func() {
+			if vgen != u.videoGen || gen != u.gen {
+				return
+			}
+			u.videoLoading = false
+			if err != nil || !ok {
+				if err != nil {
+					u.core.Log("video", "%v", err)
+				}
+				_ = m.RemoveVideo()
+				u.videoOn = false
+				u.toast(tr("The video could not be loaded — the music goes on"))
+			} else {
+				u.videoShown = true
+			}
+			u.full.syncVideo()
+		})
+	}()
 }
 
 // ---------------------------------------------------------------- updates

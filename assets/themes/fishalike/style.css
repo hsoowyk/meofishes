@@ -616,6 +616,18 @@ QMenu::separator { height: 1px; background: var(--border); margin: 5px 8px; }
   -meo-hide-after: 3200ms;
 }
 
+/* the lyric subtitle under the video (fullscreen player) */
+#VideoLyric {
+  -meo-height: 64px;
+  -meo-font-size: 24px;
+  -meo-font-weight: 800;
+  -meo-active-color: #ffffff;
+  -meo-swipe: up;
+  -meo-swipe-duration: 380ms;
+  -meo-swipe-easing: out-cubic;
+  -meo-align: center;
+}
+
 /* mini player (meofishes mini) */
 #MiniPlayer {
   background: alpha(var(--wine-2), .96);

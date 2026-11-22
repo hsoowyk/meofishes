@@ -212,11 +212,17 @@ func (u *UI) newRow(l *TrackList, t core.Track, i int) *trackRow {
 	r.syncLike(u)
 
 	r.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
+		if r.index >= 0 && r.index < len(l.tracks) {
+			u.hoverWarm(l.tracks[r.index])
+		}
 		r.d.setHover(true)
 		r.more.SetVisible(true)
 		r.syncLike(u)
 	})
 	r.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) {
+		if r.index >= 0 && r.index < len(l.tracks) {
+			u.hoverLeave(l.tracks[r.index])
+		}
 		r.d.setHover(false)
 		r.more.SetVisible(false)
 		r.syncLike(u)

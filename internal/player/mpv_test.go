@@ -84,3 +84,54 @@ func TestEffectsPlay(t *testing.T) {
 		t.Fatalf("not playing in the A-B loop: time-pos %v", pos)
 	}
 }
+
+// TestAddVideoKeepsAudio adds a video while audio plays: the audio must not
+// pause or restart, and the video must be reported as playing.
+func TestAddVideoKeepsAudio(t *testing.T) {
+	if _, err := exec.LookPath("mpv"); err != nil {
+		t.Skip("mpv not installed")
+	}
+	m, err := Start(t.TempDir(), Options{Extra: []string{"--ao=null", "--vo=null"}}, Events{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.Load("av://lavfi:aevalsrc=sin(440*2*PI*t):s=44100:d=60", nil); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1200 * time.Millisecond)
+	before := posOf(m)
+	if err := m.AddVideo("av://lavfi:testsrc=size=320x240:rate=25:d=60"); err != nil {
+		t.Fatal(err)
+	}
+	ok := false
+	for i := 0; i < 20 && !ok; i++ {
+		time.Sleep(150 * time.Millisecond)
+		ok = m.VideoPlaying()
+	}
+	after := posOf(m)
+	paused, _ := m.Get("pause")
+	t.Logf("pos %.2f → %.2f, video playing %v, pause %v", before, after, ok, paused)
+	if !ok {
+		t.Error("video not reported as playing")
+	}
+	if after < before || paused == true {
+		t.Errorf("audio restarted or paused: %.2f → %.2f pause=%v", before, after, paused)
+	}
+	if err := m.RemoveVideo(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if m.VideoPlaying() {
+		t.Error("video still on")
+	}
+	if p := posOf(m); p < after {
+		t.Errorf("audio restarted after removing the video: %.2f", p)
+	}
+}
+
+func posOf(m *MPV) float64 {
+	v, _ := m.Get("time-pos")
+	f, _ := v.(float64)
+	return f
+}

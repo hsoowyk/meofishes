@@ -673,6 +673,10 @@ func (mg *Manager) Resolve(ctx context.Context, t core.Track) (*Stream, error) {
 		if p.Manifest.ID == t.Source {
 			continue
 		}
+		key := "match|" + p.Manifest.ID + "|" + t.Key()
+		if page, ok := Cache.Get(key); ok { // found before: skip the search
+			return &Stream{URL: page, Page: true, Via: p.Manifest.ID}, nil
+		}
 		var st *Stream
 		err := p.timed(CapMatch, func() (err error) {
 			st, err = p.Resolver().Resolve(ctx, t)
@@ -680,6 +684,9 @@ func (mg *Manager) Resolve(ctx context.Context, t core.Track) (*Stream, error) {
 		})
 		if err == nil && st != nil && st.URL != "" {
 			st.Via = p.Manifest.ID
+			if st.Page && len(st.Headers) == 0 {
+				Cache.Put(key, st.URL, time.Now().AddDate(0, 0, 30))
+			}
 			return st, nil
 		}
 		if firstErr == nil {

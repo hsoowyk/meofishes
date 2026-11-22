@@ -23,6 +23,8 @@ type FullPlayer struct {
 	lyrics *LyricsView
 	viz    *Visualizer
 	video  *qt.QWidget // native window mpv draws video into
+	vidBox *qt.QWidget // the video and its lyric subtitle
+	vidLyr *LyricLine  // the line being sung, under the video
 	vidBtn *IconButton
 	lyrBtn *IconButton
 	status *qt.QLabel
@@ -110,7 +112,11 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	sh.SetActive(u.cfg.Shuffle)
 	add("FullQueue", "queue", tr("Queue"), func() { u.closeFull(); u.goPage("queue") })
 	f.lyrBtn = add("FullLyricsToggle", "lyrics", tr("Show or hide the lyrics"), func() {
-		u.cfg.Prefs.FullLyrics = !u.cfg.Prefs.FullLyrics
+		if u.videoShown { // with video: the subtitle under it
+			u.cfg.Prefs.VideoLyrics = !u.cfg.Prefs.VideoLyrics
+		} else {
+			u.cfg.Prefs.FullLyrics = !u.cfg.Prefs.FullLyrics
+		}
 		_ = u.cfg.Save()
 		f.syncSide()
 	})
@@ -181,7 +187,15 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	f.video.SetAttribute(qt.WA_NativeWindow)
 	f.video.SetAttribute(qt.WA_StyledBackground)
 	f.video.SetMinimumSize2(320, 180)
-	f.right.AddWidget(f.video)
+	f.vidBox = qt.NewQWidget2()
+	f.vidBox.SetObjectName("FullVideoBox")
+	vb := vbox(f.vidBox, nil, 8)
+	vb.AddWidget2(f.video, 1)
+	f.vidLyr = u.lyricLine("VideoLyric")
+	f.vidLyr.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {})
+	f.vidLyr.SetToolTip(tr("The lyrics under the video — the lyrics button turns them on or off"))
+	vb.AddWidget(f.vidLyr.QWidget)
+	f.right.AddWidget(f.vidBox)
 	_ = f.video.WinId() // create the native window now: mpv gets its id at start
 	rb.AddWidget2(f.right.QWidget, 1)
 	row := qt.NewQHBoxLayout2()
@@ -209,9 +223,15 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 
 // syncSide shows or hides the lyrics panel (always shown for video).
 func (f *FullPlayer) syncSide() {
-	show := f.u.cfg.Prefs.FullLyrics || f.u.videoOn
+	u := f.u
+	show := u.cfg.Prefs.FullLyrics || u.videoShown
 	f.side.SetVisible(show)
-	f.lyrBtn.SetActive(f.u.cfg.Prefs.FullLyrics)
+	if u.videoShown {
+		f.lyrBtn.SetActive(u.cfg.Prefs.VideoLyrics)
+		f.vidLyr.SetVisible(u.cfg.Prefs.VideoLyrics)
+	} else {
+		f.lyrBtn.SetActive(u.cfg.Prefs.FullLyrics)
+	}
 	if show {
 		f.syncRight()
 	}
@@ -286,14 +306,26 @@ func (f *FullPlayer) lyricsChanged(l *core.Lyrics) {
 
 // syncVideo shows the video area while video is on.
 func (f *FullPlayer) syncVideo() {
-	f.vidBtn.SetActive(f.u.videoOn)
+	u := f.u
+	f.vidBtn.SetActive(u.videoOn)
+	switch {
+	case u.videoLoading:
+		f.vidBtn.SetToolTip(tr("Loading the video… the music keeps playing"))
+	case u.videoOn:
+		f.vidBtn.SetToolTip(tr("Hide the video"))
+	default:
+		f.vidBtn.SetToolTip(tr("Show the video (when the song has one)"))
+	}
+	if u.videoLoading {
+		u.toast(tr("Loading the video… the music keeps playing"))
+	}
 	f.syncSide()
 }
 
 func (f *FullPlayer) syncRight() {
 	u := f.u
-	if u.videoOn {
-		f.right.SetCurrentWidget(f.video)
+	if u.videoShown {
+		f.right.SetCurrentWidget(f.vidBox)
 		f.viz.SetRunning(false)
 		return
 	}

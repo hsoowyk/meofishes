@@ -759,6 +759,11 @@
   "Open meofishes": "Abrir meofishes",
   "Share the lyric line as a picture": "Compartir la línea de la letra como imagen",
   "There is no lyric line to share right now": "No hay ninguna línea de la letra para compartir ahora",
-  "Wake up at (HH:MM, empty = off):": "Despertar a las (HH:MM, vacío = apagada):"
+  "Wake up at (HH:MM, empty = off):": "Despertar a las (HH:MM, vacío = apagada):",
+  "Hide the video": "Ocultar el video",
+  "Loading the video… the music keeps playing": "Cargando el video… la música sigue sonando",
+  "The lyrics under the video — the lyrics button turns them on or off": "La letra debajo del video — el botón de letra la activa o desactiva",
+  "The video could not be loaded — the music goes on": "No se pudo cargar el video — la música sigue",
+  "This song has no video": "Esta canción no tiene video"
  }
 }

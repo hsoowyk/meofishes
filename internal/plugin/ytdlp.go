@@ -167,6 +167,18 @@ func QualityFormat(q string) string {
 }
 
 func YtdlpStreamURL(ctx context.Context, page string) (string, error) {
+	key := "stream|" + AudioFormat + "|" + page
+	if u, ok := Cache.Get(key); ok {
+		if streamAlive(ctx, u) {
+			return u, nil
+		}
+		Cache.Drop(key) // signed for another IP, or revoked
+	}
+	// the same page being resolved already (warm-up, prefetch): wait for it
+	return inflight.do(key, func() (string, error) { return ytdlpStreamURL(ctx, key, page) })
+}
+
+func ytdlpStreamURL(ctx context.Context, key, page string) (string, error) {
 	out, err := runYtdlp(ctx, "-f", AudioFormat, "-g", "--no-playlist", page)
 	if err != nil {
 		return "", err
@@ -174,6 +186,31 @@ func YtdlpStreamURL(ctx context.Context, page string) (string, error) {
 	lines := strings.Fields(string(out))
 	if len(lines) == 0 {
 		return "", fmt.Errorf("yt-dlp returned no url")
+	}
+	if until := urlExpiry(lines[0]); !until.IsZero() {
+		Cache.Put(key, lines[0], until)
+	}
+	return lines[0], nil
+}
+
+// ForgetStream drops the cached stream URL of a page (it stopped working).
+func ForgetStream(page string) { Cache.Drop("stream|" + AudioFormat + "|" + page) }
+
+// YtdlpVideoURL returns the URL of the video stream only (no audio) of a
+// page, at most height pixels high: the audio keeps coming from the stream
+// that is already playing.
+func YtdlpVideoURL(ctx context.Context, page string, height int) (string, error) {
+	if height <= 0 {
+		height = 720
+	}
+	f := fmt.Sprintf("bestvideo[height<=?%d][vcodec!=none]/best[height<=?%d]", height, height)
+	out, err := runYtdlp(ctx, "-f", f, "-g", "--no-playlist", page)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Fields(string(out))
+	if len(lines) == 0 {
+		return "", fmt.Errorf("yt-dlp returned no video url")
 	}
 	return lines[0], nil
 }

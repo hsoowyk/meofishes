@@ -71,6 +71,7 @@ func New(assets fs.FS) *Core {
 	i18n.Set(cfg.Language)
 
 	c.ApplyQuality()
+	plugin.Cache = plugin.OpenResolveCache(filepath.Join(paths.Cache, "resolve.json"))
 	c.Host = &plugin.Host{Version: config.Version, UserAgent: config.UserAgent, DataDir: paths.PData, Quality: cfg.Prefs.AudioQuality,
 		Client: &http.Client{Timeout: 25 * time.Second}, Logf: c.Log}
 	c.Plugins = plugin.NewManager(c.Host, paths.Plugins, &cfg.Plugins)

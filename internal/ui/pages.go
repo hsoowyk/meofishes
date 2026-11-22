@@ -229,8 +229,8 @@ func (u *UI) newCard(t core.Track, size int) *trackCard {
 	b.AddWidget(title.QWidget)
 	b.AddWidget(sub.QWidget)
 	handCursor(c.QWidget)
-	c.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(true) })
-	c.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(false) })
+	c.OnEnterEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(true); u.hoverWarm(t) })
+	c.OnLeaveEvent(func(super func(*qt.QEvent), e *qt.QEvent) { c.d.setHover(false); u.hoverLeave(t) })
 	c.OnPaintEvent(func(super func(*qt.QPaintEvent), e *qt.QPaintEvent) {
 		super(e)
 		p := qt.NewQPainter2(c.QPaintDevice)
@@ -590,6 +590,9 @@ func (u *UI) doSearch(sp *searchPage) {
 		}
 		sp.info.SetText(strings.Join(notes, " · "))
 		sp.list.SetTracks(all, tr("Nothing found for “{query}”.", "query", q))
+		if len(all) > 0 {
+			u.warm(all[0]) // the first result is the one most often played
+		}
 	})
 }
 

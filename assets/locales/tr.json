@@ -759,6 +759,11 @@
   "Open meofishes": "meofishes'i aç",
   "Share the lyric line as a picture": "Şarkı sözü satırını resim olarak paylaş",
   "There is no lyric line to share right now": "Şu an paylaşılacak şarkı sözü satırı yok",
-  "Wake up at (HH:MM, empty = off):": "Uyanma saati (SS:DD, boş = kapalı):"
+  "Wake up at (HH:MM, empty = off):": "Uyanma saati (SS:DD, boş = kapalı):",
+  "Hide the video": "Videoyu gizle",
+  "Loading the video… the music keeps playing": "Video yükleniyor… müzik çalmaya devam ediyor",
+  "The lyrics under the video — the lyrics button turns them on or off": "Videonun altındaki şarkı sözü — şarkı sözü düğmesi açar veya kapatır",
+  "The video could not be loaded — the music goes on": "Video yüklenemedi — müzik devam ediyor",
+  "This song has no video": "Bu şarkının videosu yok"
  }
 }

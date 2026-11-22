@@ -181,6 +181,8 @@ type Prefs struct {
 	NoiseVol   int    `json:"noiseVol,omitempty"`
 	VinylPitch bool   `json:"vinylPitch,omitempty"` // the pitch follows the speed
 	FadePause  bool   `json:"fadePause"`            // fade on play / pause
+	// VideoLyrics shows the line being sung under the video.
+	VideoLyrics bool `json:"videoLyrics"`
 
 	// SponsorBlock skips non-music parts of YouTube videos (SponsorCats:
 	// comma-separated categories, "" = default set).
@@ -263,7 +265,7 @@ func DefaultPrefs() Prefs {
 		Chunked: true, ChunkKB: 1024, Workers: 4, FullDownload: true, Prefetch: true, DirectYtdlp: true,
 		FetchArtwork: true, PreferArtwork: true, KeepHistory: true, LogHTTP: true,
 		AudioQuality: "max", AutoCache: true, TrayIcon: true, Background: true, AutoUpdate: true,
-		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true, SponsorBlock: true, FadePause: true, NoiseVol: 30,
+		EQPreset: "flat", Speed: 1, MPRIS: true, CacheSongsMB: 1024, VideoQuality: 720, VideoX11: true, SponsorBlock: true, FadePause: true, NoiseVol: 30, VideoLyrics: true,
 	}
 }
 

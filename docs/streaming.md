@@ -27,10 +27,25 @@ the yt-dlp format for web pages, and plugins receive it as `app.quality`
 (scripts, declarative `{{app.quality}}`) or `quality` in `initialize`
 (process) to pick their own streams.
 
-## Prefetch
+## Prefetch and warm-up
 
-A few seconds after a song starts, meofishes resolves the **next** song and
-downloads its first parts. When it comes up, it starts almost immediately.
+On YouTube, yt-dlp needs 10–20 s to find a song's stream on a slow
+computer (most of it solving YouTube's JavaScript challenge with node).
+meofishes hides that wait:
+
+- **Next song**: 1.5 s after a song starts, the next one is resolved and its
+  first parts downloaded.
+- **Warm-up**: when the mouse rests on a song (a list row or a home card)
+  for a moment, and for the first search result, the song is resolved in
+  the background — one at a time, the newest first. Clicking it then starts
+  at once.
+- **Cache** (`~/.cache/meofishes/resolve.json`): the stream URL of a page is
+  kept until it expires (about 6 hours; checked with a 1-byte request
+  before use, since it is signed for your IP), and which YouTube video a
+  song from another source (Deezer, lyrics search…) was matched to is kept
+  for 30 days. The same page is never resolved twice at the same time.
+- The first part starts downloading as soon as the URL is known, before mpv
+  asks for it.
 
 ## Settings
 
@@ -64,11 +79,16 @@ plugin would resolve them. The index is `~/.local/share/meofishes/offline.json`.
 ## Video
 
 The video button in the fullscreen player (or Settings → Playback → Show
-video automatically) plays the song's video — YouTube pages and local video
-files — in the right side of the fullscreen player, at the quality chosen in
-Settings → Playback → Video quality. Turning it on reloads the song at the same
-position, with mpv opening the page itself (no chunked download while video is
-on).
+video automatically) adds the song's video — at the quality chosen in
+Settings → Playback → Video quality — **without stopping the music**: the
+audio keeps playing from where it is, the video-only stream is added to the
+same mpv (`video-add`) and synced to it. The video area appears only when
+mpv reports that frames are really being shown; until then the lyrics stay
+in place. If the video cannot load, the music simply goes on.
+
+Under the video, the line being sung is shown as a subtitle (it swipes to
+the next line). The lyrics button of the bar turns it on or off while the
+video is shown. Its look is `#VideoLyric` in the theme CSS.
 
 mpv draws the video inside the window through a native child window
 (`--wid`). That only works on X11, so on Wayland meofishes runs through
