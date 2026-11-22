@@ -745,6 +745,20 @@
   "The song can play in mixes again": "Der Song kann wieder in Mixen laufen",
   "What you listen to the most.": "Was du am meisten hörst.",
   "{n} repeated song removed": "{n} doppelter Song entfernt",
-  "{n} repeated songs removed": "{n} doppelte Songs entfernt"
+  "{n} repeated songs removed": "{n} doppelte Songs entfernt",
+  "Alarm": "Wecker",
+  "Alarm at {time} — keep meofishes open": "Wecker um {time} — lass meofishes offen",
+  "Alarm at {time}…": "Wecker um {time}…",
+  "Alarm off": "Wecker aus",
+  "Alarm…": "Wecker…",
+  "Close the mini player": "Mini-Player schließen",
+  "Could not save the picture": "Das Bild konnte nicht gespeichert werden",
+  "Good morning!": "Guten Morgen!",
+  "Lyric card saved in {path} and copied": "Songtext-Karte in {path} gespeichert und kopiert",
+  "Mini player": "Mini-Player",
+  "Open meofishes": "meofishes öffnen",
+  "Share the lyric line as a picture": "Die Songtextzeile als Bild teilen",
+  "There is no lyric line to share right now": "Gerade gibt es keine Songtextzeile zum Teilen",
+  "Wake up at (HH:MM, empty = off):": "Aufwachen um (HH:MM, leer = aus):"
  }
 }

@@ -103,6 +103,8 @@ type Config struct {
 	Repeat    string  `json:"repeat,omitempty"` // off | all | one
 	WindowW   int     `json:"windowW,omitempty"`
 	WindowH   int     `json:"windowH,omitempty"`
+	MiniX     int     `json:"miniX,omitempty"`
+	MiniY     int     `json:"miniY,omitempty"`
 	Maximized bool    `json:"maximized,omitempty"`
 	Language  string  `json:"language,omitempty"` // "" = English
 

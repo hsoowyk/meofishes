@@ -93,7 +93,12 @@ Control the open app:
   meofishes queue                       the queue
   meofishes sleep [minutes|end|off]     sleep timer (fades out, then pauses)
   meofishes speed [0.5 … 2]             playback speed
-  meofishes show | fullscreen | quit
+  meofishes mode [normal|nightcore|slowed|8d|karaoke]  sound mode
+  meofishes rate [0-5] | hide           rate the song / never play it in mixes again
+  meofishes surprise                    play a mix from your library
+  meofishes alarm [07:30|off]           start playing at a time (volume rises slowly)
+  meofishes share                       save the lyric line as a picture
+  meofishes show | mini | fullscreen | quit
 
 Tools:
   meofishes lyrics "Artist" "Title" [s] test the lyrics chain in the terminal
@@ -277,7 +282,7 @@ func control(args []string) (int, bool) {
 	switch cmd {
 	case "now", "status", "resume", "pause", "toggle", "stop", "next", "prev", "previous", "back",
 		"seek", "volume", "vol", "mute", "like", "unlike", "shuffle", "repeat", "queue", "show",
-		"fullscreen", "quit", "sleep", "speed":
+		"fullscreen", "quit", "sleep", "speed", "mini", "surprise", "share", "alarm", "rate", "hide", "mode":
 	case "play":
 		if len(args) > 1 && args[1] == "--help" {
 			return 0, false

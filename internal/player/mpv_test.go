@@ -68,10 +68,19 @@ func TestEffectsPlay(t *testing.T) {
 		t.Fatalf("playback ended: %s", r)
 	default:
 	}
+	tech := m.Tech()
+	t.Logf("tech %q badge %q", tech.String(), tech.Badge())
+	if tech.Codec == "" || tech.SampleRate != 44100 {
+		t.Errorf("tech info: %+v", tech)
+	}
 	af, _ := m.Get("af")
 	t.Logf("af = %v", af)
 	pos, _ := m.Get("time-pos")
-	if p, ok := pos.(float64); !ok || p <= 0 || p > 1.2 {
+	if a, _ := m.Get("ab-loop-a"); a != 0.2 {
+		t.Errorf("ab-loop-a = %v", a)
+	}
+	// the generated tone cannot seek exactly: the loop goes back to 0
+	if p, ok := pos.(float64); !ok || p < 0 || p > 1.2 {
 		t.Fatalf("not playing in the A-B loop: time-pos %v", pos)
 	}
 }

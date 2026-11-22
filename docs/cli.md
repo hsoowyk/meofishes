@@ -13,6 +13,12 @@ meofishes lyrics                      the lyrics of the song playing
 meofishes queue | show | fullscreen | quit
 meofishes sleep [minutes | end | off] sleep timer (fades out, then pauses)
 meofishes speed [0.5 … 2]             playback speed (pitch kept)
+meofishes mode [normal|nightcore|slowed|8d|karaoke]  sound mode
+meofishes rate [0-5] | hide           rate the song / never play it in mixes again
+meofishes surprise                    play a mix from your library
+meofishes alarm [07:30|off]           start playing at a time (volume rises slowly)
+meofishes share                       save the lyric line as a picture
+meofishes mini                        show or hide the mini player
 ```
 
 They talk to the app through `$XDG_RUNTIME_DIR/meofishes.sock` (exit code 3

@@ -26,7 +26,8 @@ type FullPlayer struct {
 	vidBtn *IconButton
 	lyrBtn *IconButton
 	status *qt.QLabel
-	vizFor string // stream URL the visualizer analyzes
+	tech   *qt.QLabel // quality badge
+	vizFor string     // stream URL the visualizer analyzes
 	open   bool
 }
 
@@ -44,6 +45,15 @@ func (u *UI) buildFullPlayer(parent *qt.QWidget) *FullPlayer {
 	down.OnClicked(u.closeFull)
 	top.AddWidget(down.QWidget)
 	top.AddStretch()
+	f.tech = label("", "FullQuality", "badge")
+	f.tech.Hide()
+	top.AddWidget(f.tech.QWidget)
+	share := u.iconButton("FullShare", "export", tr("Share the lyric line as a picture"))
+	share.OnClicked(u.shareLyric)
+	top.AddWidget(share.QWidget)
+	mini := u.iconButton("FullMini", "minimize", tr("Mini player"))
+	mini.OnClicked(func() { u.closeFull(); u.toggleMini() })
+	top.AddWidget(mini.QWidget)
 	f.vidBtn = u.iconButton("FullVideo", "video", tr("Show the video (when the song has one)"))
 	f.vidBtn.OnClicked(func() { u.setVideo(!u.videoOn) })
 	fs := u.iconButton("FullWindow", "fullscreen", tr("Fullscreen window (F11)"))

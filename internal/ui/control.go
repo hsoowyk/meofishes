@@ -211,6 +211,57 @@ func (u *UI) control(cmd string, args []string) (any, error) {
 	case "fullscreen", "lyrics-view":
 		u.toggleWindowShown()
 		u.openFull()
+	case "mini":
+		u.toggleMini()
+	case "surprise":
+		u.surpriseMe()
+	case "share":
+		u.shareLyric()
+	case "alarm":
+		if len(args) == 0 {
+			if l := u.alarmLeft(); l != "" {
+				return l, nil
+			}
+			return "off", nil
+		}
+		if err := u.setAlarm(args[0]); err != nil {
+			return nil, err
+		}
+		if l := u.alarmLeft(); l != "" {
+			return l, nil
+		}
+		return "off", nil
+	case "rate":
+		cur := u.current()
+		if cur == nil {
+			return nil, errors.New("nothing playing")
+		}
+		if len(args) > 0 {
+			n, err := strconv.Atoi(args[0])
+			if err != nil || n < 0 || n > 5 {
+				return nil, errors.New("rate needs 0 to 5 stars")
+			}
+			u.core.Library.SetRating(*cur, n)
+		}
+		return u.core.Library.Rating(*cur), nil
+	case "hide":
+		cur := u.current()
+		if cur == nil {
+			return nil, errors.New("nothing playing")
+		}
+		u.core.Library.SetHidden(*cur, true)
+		u.Next(true)
+	case "mode":
+		if len(args) == 0 {
+			return firstNonEmpty(u.currentMode(), "custom"), nil
+		}
+		for _, m := range soundModes() {
+			if m.id == args[0] {
+				u.setMode(m)
+				return m.id, nil
+			}
+		}
+		return nil, errors.New("modes: normal, nightcore, slowed, 8d, karaoke")
 	case "quit":
 		singleShot(50, u.quit)
 	default:

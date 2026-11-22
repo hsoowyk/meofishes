@@ -1,7 +1,7 @@
 {
   "id": "fishalike",
   "name": "Fishalike",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "author": "meofishes",
   "description": "The default theme: a darkened light red with light and dark pink touches. The background breathes with the album cover.",
   "style": "style.css",

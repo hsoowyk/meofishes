@@ -77,6 +77,10 @@
 - **Discord**: "Listening to …" on your profile (Settings → Playback; needs
   the Application ID of an application you create at
   discord.com/developers — Discord shows its name and you control it).
+- **Mini player**: a small window that stays on top (tray menu, the
+  fullscreen player or `meofishes mini`); drag it anywhere.
+- **Alarm**: starts playing at a time with the volume rising over a minute
+  (sleep timer menu or `meofishes alarm 07:30`).
 - **Single instance**: opening meofishes again brings the window back.
 
 ## Listen together
@@ -88,6 +92,11 @@ listeners follow in sync and suggest songs ([details](listen-together.md)).
 
 - Themes: Fishalike (default), Abyss, Sakura Paper, Ink (OLED black), Moss,
   Daylight — and everything adjustable in Settings or CSS.
+- **Quality badge** in the fullscreen player: Hi-Res, Lossless or HQ; the
+  tooltip has codec, sample rate, bit depth and bitrate.
+- **Lyric cards**: the line being sung, the cover and the title on a
+  1080×1350 picture (saved in Pictures and copied) — share button of the
+  fullscreen player or `meofishes share`.
 - Fullscreen player: tilting cover with title on hover, "potion" background,
   lyrics panel, visualizer.
 - **Latin letters in lyrics**: Japanese kana, Korean hangul and Cyrillic

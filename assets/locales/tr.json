@@ -745,6 +745,20 @@
   "The song can play in mixes again": "Şarkı karışımlarda yeniden çalabilir",
   "What you listen to the most.": "En çok dinlediğin.",
   "{n} repeated song removed": "{n} tekrarlanan şarkı kaldırıldı",
-  "{n} repeated songs removed": "{n} tekrarlanan şarkı kaldırıldı"
+  "{n} repeated songs removed": "{n} tekrarlanan şarkı kaldırıldı",
+  "Alarm": "Alarm",
+  "Alarm at {time} — keep meofishes open": "Alarm {time} — meofishes'i açık bırak",
+  "Alarm at {time}…": "Alarm {time}…",
+  "Alarm off": "Alarm kapalı",
+  "Alarm…": "Alarm…",
+  "Close the mini player": "Mini oynatıcıyı kapat",
+  "Could not save the picture": "Resim kaydedilemedi",
+  "Good morning!": "Günaydın!",
+  "Lyric card saved in {path} and copied": "Şarkı sözü kartı {path} konumuna kaydedildi ve kopyalandı",
+  "Mini player": "Mini oynatıcı",
+  "Open meofishes": "meofishes'i aç",
+  "Share the lyric line as a picture": "Şarkı sözü satırını resim olarak paylaş",
+  "There is no lyric line to share right now": "Şu an paylaşılacak şarkı sözü satırı yok",
+  "Wake up at (HH:MM, empty = off):": "Uyanma saati (SS:DD, boş = kapalı):"
  }
 }

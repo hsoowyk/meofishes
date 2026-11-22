@@ -69,6 +69,8 @@ func (u *UI) buildTray() {
 		u.sleepMenu(sm)
 	})
 	m.AddSeparator()
+	add(tr("Mini player"), u.toggleMini)
+	add(tr("Surprise me"), u.surpriseMe)
 	add(tr("Show / hide meofishes"), u.toggleWindow)
 	add(tr("Quit"), u.quit)
 	u.tray.SetContextMenu(m)

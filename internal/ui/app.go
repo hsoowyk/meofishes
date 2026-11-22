@@ -76,6 +76,10 @@ type UI struct {
 	lt              listenTogether
 	abA, abB        int64
 	fadeT           *qt.QTimer
+	mini            *miniPlayer
+	techBusy        bool
+	techTick        int
+	alarmAt         time.Time
 	fxTimer         *qt.QTimer
 	sb              *sponsorblock.Client
 	sbSegs          []sponsorblock.Segment
@@ -525,6 +529,10 @@ func (u *UI) startTimers() {
 	slow.OnTimeout(func() {
 		u.checkThemeFiles()
 		u.expirePrefetch()
+		u.alarmTick()
+		if u.techTick++; u.techTick%3 == 0 {
+			u.refreshTech()
+		}
 	})
 	slow.Start2()
 }

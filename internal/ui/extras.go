@@ -145,6 +145,13 @@ func (u *UI) sleepMenu(m *qt.QMenu) {
 	}
 	end := m.AddAction(tr("End of this song"))
 	end.OnTriggered(func() { u.setSleep(-1) })
+	m.AddSeparator()
+	at := tr("Alarm…")
+	if l := u.alarmLeft(); l != "" {
+		at = tr("Alarm at {time}…", "time", l)
+	}
+	al := m.AddAction(at)
+	al.OnTriggered(u.alarmDialog)
 }
 
 // ---------------------------------------------------------------- MPRIS
