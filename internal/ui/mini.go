@@ -91,7 +91,7 @@ func (u *UI) buildMini() *miniPlayer {
 	b.AddLayout2(col.QLayout, 1)
 
 	// drag the window by its background
-	w.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+	f.OnMousePressEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
 		if mp.drag != nil {
 			mp.drag.Delete()
 		}
@@ -99,13 +99,13 @@ func (u *UI) buildMini() *miniPlayer {
 		pos := w.Pos()
 		mp.drag = qt.NewQPoint2(gp.X()-pos.X(), gp.Y()-pos.Y())
 	})
-	w.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+	f.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
 		if mp.drag != nil {
 			gp := e.GlobalPos()
 			w.Move(gp.X()-mp.drag.X(), gp.Y()-mp.drag.Y())
 		}
 	})
-	w.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
+	f.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), e *qt.QMouseEvent) {
 		if mp.drag != nil {
 			mp.drag.Delete()
 			mp.drag = nil

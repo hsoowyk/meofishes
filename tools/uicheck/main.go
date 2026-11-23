@@ -110,7 +110,15 @@ func checkDir(path, dir string, light, report bool) (*types.Package, error) {
 	if light {
 		conf.Error = func(error) {} // C types in miqt signatures are unknowable; ignore
 	}
-	pkg, _ := conf.Check(path, fset, files, nil)
+	var info *types.Info
+	if !light {
+		info = &types.Info{Selections: map[*ast.SelectorExpr]*types.Selection{}, Types: map[ast.Expr]types.TypeAndValue{},
+			Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	}
+	pkg, _ := conf.Check(path, fset, files, info)
+	if info != nil && report {
+		errs = append(errs, lintOverrides(files, info)...)
+	}
 	if light {
 		debug.FreeOSMemory()
 	}
@@ -149,4 +157,111 @@ func main() {
 	if bad {
 		os.Exit(1)
 	}
+}
+
+// lintOverrides finds virtual-method overrides (OnXxxEvent(func(super …)))
+// called through a base class of the object, which miqt rejects at run time
+// ("can only override virtual methods for directly constructed types"):
+//
+//	f := qt.NewQFrame2(); w := f.QWidget; w.OnMousePressEvent(…)   // panics
+//	f.QWidget.OnMousePressEvent(…)                                  // panics
+//
+// The override must be set on the type that was constructed (f.On…).
+func lintOverrides(files []*ast.File, info *types.Info) []string {
+	const qtPkg = "github.com/mappu/miqt/qt"
+	qtNamed := func(t types.Type) *types.Named {
+		if p, ok := t.(*types.Pointer); ok {
+			t = p.Elem()
+		}
+		n, ok := t.(*types.Named)
+		if ok && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == qtPkg {
+			return n
+		}
+		return nil
+	}
+	isOverride := func(fn *types.Func) bool {
+		if !strings.HasPrefix(fn.Name(), "On") {
+			return false
+		}
+		sig, ok := fn.Type().(*types.Signature)
+		if !ok || sig.Params().Len() != 1 {
+			return false
+		}
+		cb, ok := sig.Params().At(0).Type().(*types.Signature)
+		if !ok || cb.Params().Len() == 0 {
+			return false
+		}
+		_, first := cb.Params().At(0).Type().(*types.Signature) // func(super func(…), …)
+		return first && cb.Params().At(0).Name() == "super"
+	}
+	// base reports "X.Base" when e selects the embedded base class Base of a
+	// qt type X (f.QWidget), following one level of local variables.
+	var defs = map[types.Object]ast.Expr{}
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			if as, ok := n.(*ast.AssignStmt); ok && len(as.Lhs) == len(as.Rhs) {
+				for i, l := range as.Lhs {
+					if id, ok := l.(*ast.Ident); ok {
+						if o := info.Defs[id]; o != nil {
+							defs[o] = as.Rhs[i]
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	var base func(e ast.Expr, depth int) string
+	base = func(e ast.Expr, depth int) string {
+		switch x := e.(type) {
+		case *ast.ParenExpr:
+			return base(x.X, depth)
+		case *ast.Ident:
+			if depth > 0 {
+				if d, ok := defs[info.Uses[x]]; ok {
+					return base(d, depth-1)
+				}
+			}
+		case *ast.SelectorExpr:
+			sel := info.Selections[x]
+			if sel == nil || sel.Kind() != types.FieldVal {
+				return ""
+			}
+			fv, ok := sel.Obj().(*types.Var)
+			if !ok || !fv.Embedded() {
+				return ""
+			}
+			outer, inner := qtNamed(info.Types[x.X].Type), qtNamed(fv.Type())
+			if outer != nil && inner != nil && outer.Obj().Name() != inner.Obj().Name() {
+				return outer.Obj().Name() + "." + inner.Obj().Name()
+			}
+		}
+		return ""
+	}
+	var out []string
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			se, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			sel := info.Selections[se]
+			if sel == nil || sel.Kind() != types.MethodVal {
+				return true
+			}
+			fn, ok := sel.Obj().(*types.Func)
+			if !ok || fn.Pkg() == nil || fn.Pkg().Path() != qtPkg || !isOverride(fn) {
+				return true
+			}
+			if b := base(se.X, 2); b != "" {
+				out = append(out, fmt.Sprintf("%s: %s is set through the base class %s: miqt panics — call it on the constructed object", fset.Position(se.Sel.Pos()), fn.Name(), b))
+			}
+			return true
+		})
+	}
+	return out
 }
